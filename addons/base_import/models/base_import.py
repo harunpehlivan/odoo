@@ -407,26 +407,21 @@ class Import(models.TransientModel):
                 val = val.strip()
                 if not val:
                     continue
-                # value might have the currency symbol left or right from the value
-                val = self._remove_currency_symbol(val)
-                if val:
+                if val := self._remove_currency_symbol(val):
                     if options.get('float_thousand_separator') and options.get('float_decimal_separator'):
                         val = val.replace(options['float_thousand_separator'], '').replace(options['float_decimal_separator'], '.')
-                    # We are now sure that this is a float, but we still need to find the
-                    # thousand and decimal separator
-                    else:
-                        if val.count('.') > 1:
-                            options['float_thousand_separator'] = '.'
-                            options['float_decimal_separator'] = ','
-                        elif val.count(',') > 1:
-                            options['float_thousand_separator'] = ','
-                            options['float_decimal_separator'] = '.'
-                        elif val.find('.') > val.find(','):
-                            thousand_separator = ','
-                            decimal_separator = '.'
-                        elif val.find(',') > val.find('.'):
-                            thousand_separator = '.'
-                            decimal_separator = ','
+                    elif val.count('.') > 1:
+                        options['float_thousand_separator'] = '.'
+                        options['float_decimal_separator'] = ','
+                    elif val.count(',') > 1:
+                        options['float_thousand_separator'] = ','
+                        options['float_decimal_separator'] = '.'
+                    elif val.find('.') > val.find(','):
+                        thousand_separator = ','
+                        decimal_separator = '.'
+                    elif val.find(',') > val.find('.'):
+                        thousand_separator = '.'
+                        decimal_separator = ','
                 else:
                     # This is not a float so exit this try
                     float('a')
@@ -448,16 +443,18 @@ class Import(models.TransientModel):
         # Or a date/datetime if it matches the pattern
         date_patterns = [options['date_format']] if options.get(
             'date_format') else []
-        user_date_format = self.env['res.lang']._lang_get(self.env.user.lang).date_format
-        if user_date_format:
+        if (
+            user_date_format := self.env['res.lang']
+            ._lang_get(self.env.user.lang)
+            .date_format
+        ):
             try:
                 to_re(user_date_format)
                 date_patterns.append(user_date_format)
             except KeyError:
                 pass
         date_patterns.extend(DATE_PATTERNS)
-        match = check_patterns(date_patterns, preview_values)
-        if match:
+        if match := check_patterns(date_patterns, preview_values):
             options['date_format'] = match
             return ['date', 'datetime']
 
@@ -468,8 +465,7 @@ class Import(models.TransientModel):
             for d in date_patterns
             for t in TIME_PATTERNS
         )
-        match = check_patterns(datetime_patterns, preview_values)
-        if match:
+        if match := check_patterns(datetime_patterns, preview_values):
             options['datetime_format'] = match
             return ['datetime']
 
@@ -479,7 +475,7 @@ class Import(models.TransientModel):
     def _find_type_from_preview(self, options, preview):
         type_fields = []
         if preview:
-            for column in range(0, len(preview[0])):
+            for column in range(len(preview[0])):
                 preview_values = [value[column].strip() for value in preview]
                 type_field = self._try_match_column(preview_values, options)
                 type_fields.append(type_field)
@@ -562,8 +558,7 @@ class Import(models.TransientModel):
         mapping_fields = {rec['column_name']: rec['field_name'] for rec in mapping_records}
         for index, header in enumerate(headers):
             match_field = []
-            mapping_field_name = mapping_fields.get(header.lower())
-            if mapping_field_name:
+            if mapping_field_name := mapping_fields.get(header.lower()):
                 match_field = mapping_field_name.split('/')
             if not match_field:
                 match_field = [field['name'] for field in self._match_header(header, fields, options)]
@@ -596,10 +591,11 @@ class Import(models.TransientModel):
             assert preview, "file seems to have no content"
             header_types = self._find_type_from_preview(options, preview)
             if options.get('keep_matches') and len(options.get('fields', [])):
-                matches = {}
-                for index, match in enumerate(options.get('fields')):
-                    if match:
-                        matches[index] = match.split('/')
+                matches = {
+                    index: match.split('/')
+                    for index, match in enumerate(options.get('fields'))
+                    if match
+                }
 
             if options.get('keep_matches'):
                 advanced_mode = options.get('advanced')
@@ -611,8 +607,7 @@ class Import(models.TransientModel):
                 advanced_mode = has_relational_header or has_relational_match
 
             batch = False
-            batch_cutoff = options.get('limit')
-            if batch_cutoff:
+            if batch_cutoff := options.get('limit'):
                 if count > batch_cutoff:
                     batch = len(preview) > batch_cutoff
                 else:
@@ -704,18 +699,14 @@ class Import(models.TransientModel):
         if len(split_value) == 1:
             if float_regex.search(split_value[0]) is not None:
                 return split_value[0] if not negative else '-' + split_value[0]
-            return False
         else:
-            # String has been split in 2, locate which index contains the float and which does not
-            currency_index = 0
-            if float_regex.search(split_value[0]) is not None:
-                currency_index = 1
+            currency_index = 1 if float_regex.search(split_value[0]) is not None else 0
             # Check that currency exists
             currency = self.env['res.currency'].search([('symbol', '=', split_value[currency_index].strip())])
             if len(currency):
                 return split_value[(currency_index + 1) % 2] if not negative else '-' + split_value[(currency_index + 1) % 2]
-            # Otherwise it is not a float with a currency symbol
-            return False
+
+        return False
 
     @api.model
     def _parse_float_from_data(self, data, index, name, options):
@@ -953,8 +944,9 @@ class Import(models.TransientModel):
                 if column_name:
                     # Update to latest selected field
                     mapping_domain = [('res_model', '=', self.res_model), ('column_name', '=', column_name)]
-                    column_mapping = BaseImportMapping.search(mapping_domain, limit=1)
-                    if column_mapping:
+                    if column_mapping := BaseImportMapping.search(
+                        mapping_domain, limit=1
+                    ):
                         if column_mapping.field_name != fields[index]:
                             column_mapping.field_name = fields[index]
                     else:

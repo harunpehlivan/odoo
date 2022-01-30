@@ -123,8 +123,7 @@ class IrAttachment(models.Model):
     @api.model
     def _index(self, bin_data, mimetype):
         for ftype in FTYPES:
-            buf = getattr(self, '_index_%s' % ftype)(bin_data)
-            if buf:
+            if buf := getattr(self, '_index_%s' % ftype)(bin_data):
                 return buf
 
         return super(IrAttachment, self)._index(bin_data, mimetype)

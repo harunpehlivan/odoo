@@ -36,17 +36,15 @@ class Partner(models.Model):
                 field_pos = re_match.start()
                 if field_name not in street_fields:
                     raise UserError(_("Unrecognized field %s in street format.", field_name))
-                if not previous_field:
-                    # first iteration: add heading chars in street_format
-                    if partner[field_name]:
-                        street_value += street_format[0:field_pos] + partner[field_name]
-                else:
+                if previous_field:
                     # get the substring between 2 fields, to be used as separator
                     separator = street_format[previous_pos:field_pos]
                     if street_value and partner[field_name]:
                         street_value += separator
                     if partner[field_name]:
                         street_value += partner[field_name]
+                elif partner[field_name]:
+                    street_value += street_format[:field_pos] + partner[field_name]
                 previous_field = field_name
                 previous_pos = re_match.end()
 
@@ -100,9 +98,6 @@ class Partner(models.Model):
                 # select next field to find (first pass OR field found)
                 # [2:-2] is used to remove the extra chars '%(' and ')s'
                 field_name = re_match.group()[2:-2]
-            else:
-                # value not found: keep looking for the same field
-                pass
             if field_name not in street_fields:
                 raise UserError(_("Unrecognized field %s in street format.", field_name))
             previous_pos = re_match.end()

@@ -94,7 +94,7 @@ class AccountEdiTestCommon(AccountTestInvoicingCommon):
 
         attachments = documents_to_return.attachment_id
 
-        data_str_list = []
-        for attachment in attachments.with_context(bin_size=False):
-            data_str_list.append(base64.decodebytes(attachment.datas))
-        return data_str_list
+        return [
+            base64.decodebytes(attachment.datas)
+            for attachment in attachments.with_context(bin_size=False)
+        ]

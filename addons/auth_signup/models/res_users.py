@@ -113,15 +113,16 @@ class ResUsers(models.Model):
         """ signup a new user using the template user """
 
         # check that uninvited users may sign up
-        if 'partner_id' not in values:
-            if self._get_signup_invitation_scope() != 'b2c':
-                raise SignupError(_('Signup is not allowed for uninvited users'))
+        if (
+            'partner_id' not in values
+            and self._get_signup_invitation_scope() != 'b2c'
+        ):
+            raise SignupError(_('Signup is not allowed for uninvited users'))
         return self._create_user_from_template(values)
 
     def _notify_inviter(self):
         for user in self:
-            invite_partner = user.create_uid.partner_id
-            if invite_partner:
+            if invite_partner := user.create_uid.partner_id:
                 # notify invite user that new user is connected
                 title = _("%s connected", user.name)
                 message = _("This is his first connection. Wish him welcome")
@@ -240,8 +241,7 @@ class ResUsers(models.Model):
         # overridden to automatically invite user to sign up
         users = super(ResUsers, self).create(vals_list)
         if not self.env.context.get('no_reset_password'):
-            users_with_email = users.filtered('email')
-            if users_with_email:
+            if users_with_email := users.filtered('email'):
                 try:
                     users_with_email.with_context(create_user=True).action_reset_password()
                 except MailDeliveryException:

@@ -16,18 +16,28 @@ def migrate_set_tags_and_taxes_updatable(cr, registry, module):
     that need migration (for example in case of VAT report improvements)
     '''
     env = api.Environment(cr, SUPERUSER_ID, {})
-    xml_record_ids = env['ir.model.data'].search([
-        ('model', 'in', ['account.tax.template', 'account.account.tag']),
-        ('module', 'like', module)
-    ]).ids
-    if xml_record_ids:
+    if (
+        xml_record_ids := env['ir.model.data']
+        .search(
+            [
+                (
+                    'model',
+                    'in',
+                    ['account.tax.template', 'account.account.tag'],
+                ),
+                ('module', 'like', module),
+            ]
+        )
+        .ids
+    ):
         cr.execute("update ir_model_data set noupdate = 'f' where id in %s", (tuple(xml_record_ids),))
 
 def preserve_existing_tags_on_taxes(cr, registry, module):
     ''' This is a utility function used to preserve existing previous tags during upgrade of the module.'''
     env = api.Environment(cr, SUPERUSER_ID, {})
-    xml_records = env['ir.model.data'].search([('model', '=', 'account.account.tag'), ('module', 'like', module)])
-    if xml_records:
+    if xml_records := env['ir.model.data'].search(
+        [('model', '=', 'account.account.tag'), ('module', 'like', module)]
+    ):
         cr.execute("update ir_model_data set noupdate = 't' where id in %s", [tuple(xml_records.ids)])
 
 #  ---------------------------------------------------------------
@@ -201,8 +211,9 @@ class AccountChartTemplate(models.Model):
         if not self.env.is_admin():
             raise AccessError(_("Only administrators can load a chart of accounts"))
 
-        existing_accounts = self.env['account.account'].search([('company_id', '=', company.id)])
-        if existing_accounts:
+        if existing_accounts := self.env['account.account'].search(
+            [('company_id', '=', company.id)]
+        ):
             # we tolerate switching from accounting package (localization module) as long as there isn't yet any accounting
             # entries created for the company.
             if self.existing_accounting(company):
@@ -210,8 +221,9 @@ class AccountChartTemplate(models.Model):
 
             # delete accounting properties
             prop_values = ['account.account,%s' % (account_id,) for account_id in existing_accounts.ids]
-            existing_journals = self.env['account.journal'].search([('company_id', '=', company.id)])
-            if existing_journals:
+            if existing_journals := self.env['account.journal'].search(
+                [('company_id', '=', company.id)]
+            ):
                 prop_values.extend(['account.journal,%s' % (journal_id,) for journal_id in existing_journals.ids])
             self.env['ir.property'].sudo().search(
                 [('value_reference', 'in', prop_values)]
@@ -375,8 +387,9 @@ class AccountChartTemplate(models.Model):
         # Add action to open wizard to select between several templates
         if not self.company_id.chart_template_id:
             todo = self.env['ir.actions.todo']
-            action_rec = self.env['ir.model.data'].xmlid_to_object('account.action_wizard_multi_chart')
-            if action_rec:
+            if action_rec := self.env['ir.model.data'].xmlid_to_object(
+                'account.action_wizard_multi_chart'
+            ):
                 todo.create({'action_id': action_rec.id, 'name': _('Choose Accounting Template')})
         return True
 
@@ -490,8 +503,7 @@ class AccountChartTemplate(models.Model):
         ]
         for stock_property in stock_properties:
             account = getattr(self, stock_property)
-            value = account and acc_template_ref[account.id] or False
-            if value:
+            if value := account and acc_template_ref[account.id] or False:
                 company.write({stock_property: value})
         return True
 
@@ -601,12 +613,12 @@ class AccountChartTemplate(models.Model):
             'expense_currency_exchange_account_id': self.expense_currency_exchange_account_id.id,
         }
 
-        values = {}
+        values = {
+            key: account_ref.get(account)
+            for key, account in accounts.items()
+            if account_ref.get(account)
+        }
 
-        # The loop is to avoid writing when we have no values, thus avoiding erasing the account from the parent
-        for key, account in accounts.items():
-            if account_ref.get(account):
-                values[key] = account_ref.get(account)
 
         company.write(values)
 
@@ -658,21 +670,22 @@ class AccountChartTemplate(models.Model):
         """ This method generates a dictionary of all the values for the account that will be created.
         """
         self.ensure_one()
-        tax_ids = []
-        for tax in account_template.tax_ids:
-            tax_ids.append(tax_template_ref[tax.id])
-        val = {
-                'name': account_template.name,
-                'currency_id': account_template.currency_id and account_template.currency_id.id or False,
-                'code': code_acc,
-                'user_type_id': account_template.user_type_id and account_template.user_type_id.id or False,
-                'reconcile': account_template.reconcile,
-                'note': account_template.note,
-                'tax_ids': [(6, 0, tax_ids)],
-                'company_id': company.id,
-                'tag_ids': [(6, 0, [t.id for t in account_template.tag_ids])],
-            }
-        return val
+        tax_ids = [tax_template_ref[tax.id] for tax in account_template.tax_ids]
+        return {
+            'name': account_template.name,
+            'currency_id': account_template.currency_id
+            and account_template.currency_id.id
+            or False,
+            'code': code_acc,
+            'user_type_id': account_template.user_type_id
+            and account_template.user_type_id.id
+            or False,
+            'reconcile': account_template.reconcile,
+            'note': account_template.note,
+            'tax_ids': [(6, 0, tax_ids)],
+            'company_id': company.id,
+            'tag_ids': [(6, 0, [t.id for t in account_template.tag_ids])],
+        }
 
     def generate_account(self, tax_template_ref, acc_template_ref, code_digits, company):
         """ This method generates accounts from account templates.
@@ -900,10 +913,12 @@ class AccountTaxTemplate(models.Model):
         """ This method generates a dictionary of all the values for the tax that will be created.
         """
         # Compute children tax ids
-        children_ids = []
-        for child_tax in self.children_tax_ids:
-            if tax_template_to_tax.get(child_tax.id):
-                children_ids.append(tax_template_to_tax[child_tax.id])
+        children_ids = [
+            tax_template_to_tax[child_tax.id]
+            for child_tax in self.children_tax_ids
+            if tax_template_to_tax.get(child_tax.id)
+        ]
+
         self.ensure_one()
         val = {
             'name': self.name,
@@ -979,10 +994,8 @@ class AccountTaxTemplate(models.Model):
                 # But we can force the sort by calling sort()
                 all_tax_rep_lines = tax.invoice_repartition_line_ids.sorted() + tax.refund_repartition_line_ids.sorted()
                 all_template_rep_lines = template.invoice_repartition_line_ids + template.refund_repartition_line_ids
-                for i in range(0, len(all_template_rep_lines)):
-                    # We assume template and tax repartition lines are in the same order
-                    template_account = all_template_rep_lines[i].account_id
-                    if template_account:
+                for i in range(len(all_template_rep_lines)):
+                    if template_account := all_template_rep_lines[i].account_id:
                         todo_dict['account.tax.repartition.line'][all_tax_rep_lines[i].id] = {
                             'account_id': template_account.id,
                         }
@@ -1034,7 +1047,7 @@ class AccountTaxRepartitionLineTemplate(models.Model):
                 vals['use_in_tax_closing'] = False
             else:
                 internal_group = self.env['account.account.template'].browse(vals.get('account_id')).user_type_id.internal_group
-                vals['use_in_tax_closing'] = not (internal_group == 'income' or internal_group == 'expense')
+                vals['use_in_tax_closing'] = not internal_group in ['income', 'expense']
 
         return super(AccountTaxRepartitionLineTemplate, self).create(vals)
 
@@ -1059,8 +1072,9 @@ class AccountTaxRepartitionLineTemplate(models.Model):
     @api.constrains('plus_report_line_ids', 'minus_report_line_ids')
     def validate_tags(self):
         all_tax_rep_lines = self.mapped('plus_report_line_ids') + self.mapped('minus_report_line_ids')
-        lines_without_tag = all_tax_rep_lines.filtered(lambda x: not x.tag_name)
-        if lines_without_tag:
+        if lines_without_tag := all_tax_rep_lines.filtered(
+            lambda x: not x.tag_name
+        ):
             raise ValidationError(_("The following tax report lines are used in some tax distribution template though they don't generate any tag: %s . This probably means you forgot to set a tag_name on these lines.", str(lines_without_tag.mapped('name'))))
 
     def get_repartition_line_create_vals(self, company):

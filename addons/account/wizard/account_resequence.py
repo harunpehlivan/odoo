@@ -56,9 +56,15 @@ class ReSequenceWizard(models.TransientModel):
             in_elipsis = 0
             previous_line = None
             for i, line in enumerate(new_values):
-                if i < 3 or i == len(new_values) - 1 or line['new_by_name'] != line['new_by_date'] \
-                 or (self.sequence_number_reset == 'year' and line['server-date'][0:4] != previous_line['server-date'][0:4])\
-                 or (self.sequence_number_reset == 'month' and line['server-date'][0:7] != previous_line['server-date'][0:7]):
+                if (
+                    i < 3
+                    or i == len(new_values) - 1
+                    or line['new_by_name'] != line['new_by_date']
+                    or self.sequence_number_reset == 'year'
+                    and line['server-date'][:4] != previous_line['server-date'][:4]
+                    or self.sequence_number_reset == 'month'
+                    and line['server-date'][:7] != previous_line['server-date'][:7]
+                ):
                     if in_elipsis:
                         changeLines.append({'current_name': '... (%s other)' % str(in_elipsis), 'new_by_name': '...', 'new_by_date': '...', 'date': '...'})
                         in_elipsis = 0
@@ -127,9 +133,12 @@ class ReSequenceWizard(models.TransientModel):
         # Can't change the name of a posted invoice, but we do not want to have the chatter
         # logging 3 separate changes with [state to draft], [change of name], [state to posted]
         self.with_context(tracking_disable=True).move_ids.state = 'draft'
-        if self.move_ids.journal_id and self.move_ids.journal_id.restrict_mode_hash_table:
-            if self.ordering == 'date':
-                raise UserError(_('You can not reorder sequence by date when the journal is locked with a hash.'))
+        if (
+            self.move_ids.journal_id
+            and self.move_ids.journal_id.restrict_mode_hash_table
+            and self.ordering == 'date'
+        ):
+            raise UserError(_('You can not reorder sequence by date when the journal is locked with a hash.'))
         for move_id in self.move_ids:
             if str(move_id.id) in new_values:
                 if self.ordering == 'keep':

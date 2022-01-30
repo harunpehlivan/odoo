@@ -8,10 +8,15 @@ class IrActionsReport(models.Model):
 
     def retrieve_attachment(self, record):
         # get the original bills through the message_main_attachment_id field of the record
-        if self.report_name == 'account.report_original_vendor_bill' and record.message_main_attachment_id:
-            if record.message_main_attachment_id.mimetype == 'application/pdf' or \
-               record.message_main_attachment_id.mimetype.startswith('image'):
-                return record.message_main_attachment_id
+        if (
+            self.report_name == 'account.report_original_vendor_bill'
+            and record.message_main_attachment_id
+            and (
+                record.message_main_attachment_id.mimetype == 'application/pdf'
+                or record.message_main_attachment_id.mimetype.startswith('image')
+            )
+        ):
+            return record.message_main_attachment_id
         return super(IrActionsReport, self).retrieve_attachment(record)
 
     def _post_pdf(self, save_in_attachment, pdf_content=None, res_ids=None):

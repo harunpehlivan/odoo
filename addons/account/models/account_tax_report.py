@@ -28,9 +28,7 @@ class AccountTaxReport(models.Model):
                         if cache_key not in tags_cache:
                             tags_cache[cache_key] = self.env['account.account.tag']._get_tax_tags(line.tag_name, vals['country_id'])
 
-                        new_tags = tags_cache[cache_key]
-
-                        if new_tags:
+                        if new_tags := tags_cache[cache_key]:
                             tags_to_unlink = line.tag_ids.filtered(lambda x: record == x.mapped('tax_report_line_ids.report_id'))
                             # == instead of in, as we only want tags_to_unlink to contain the tags that are not linked to any other report than the one we're considering
                             line.write({'tag_ids': [(6, 0, new_tags.ids)]})
@@ -118,9 +116,9 @@ class AccountTaxReportLine(models.Model):
             report = self.env['account.tax.report'].browse(vals['report_id'])
             country = report.country_id
 
-            existing_tags = self.env['account.account.tag']._get_tax_tags(tag_name, country.id)
-
-            if existing_tags:
+            if existing_tags := self.env['account.account.tag']._get_tax_tags(
+                tag_name, country.id
+            ):
                 # We connect the new report line to the already existing tags
                 vals['tag_ids'] = [(6, 0, existing_tags.ids)]
             else:
@@ -146,17 +144,13 @@ class AccountTaxReportLine(models.Model):
         return [(0, 0, minus_tag_vals), (0, 0, plus_tag_vals)]
 
     def write(self, vals):
-        tag_name_postponed = None
-
         # If tag_name was set, but not tag_ids, we postpone the write of
         # tag_name, and perform it only after having generated/retrieved the tags.
         # Otherwise, tag_name and tags' name would not match, breaking
         # _validate_tags constaint.
-        postpone_tag_name = 'tag_name' in vals and not 'tag_ids' in vals
+        postpone_tag_name = 'tag_name' in vals and 'tag_ids' not in vals
 
-        if postpone_tag_name:
-            tag_name_postponed = vals.pop('tag_name')
-
+        tag_name_postponed = vals.pop('tag_name') if postpone_tag_name else None
         rslt = super(AccountTaxReportLine, self).write(vals)
 
         if postpone_tag_name:
@@ -210,15 +204,14 @@ class AccountTaxReportLine(models.Model):
                     other_lines_same_tag = line_tags.mapped('tax_report_line_ids').filtered(lambda x: x not in records)
                     if not other_lines_same_tag:
                         self._delete_tags_from_taxes(line_tags.ids)
-                    orm_cmd_code = other_lines_same_tag and 3 or 2
+                    orm_cmd_code = 3 if other_lines_same_tag else 2
                     records.write({'tag_name': None, 'tag_ids': [(orm_cmd_code, tag.id) for tag in line_tags]})
 
         return rslt
 
     def unlink(self):
         self._delete_tags_from_taxes(self.mapped('tag_ids.id'))
-        children = self.mapped('children_line_ids')
-        if children:
+        if children := self.mapped('children_line_ids'):
             children.unlink()
         return super(AccountTaxReportLine, self).unlink()
 

@@ -58,8 +58,9 @@ class AdyenTransaction(models.Model):
                 transactions, has_next_page = payout_id._fetch_transactions(page)
                 for transaction in transactions:
                     transaction_reference = transaction.get('paymentPspReference') or transaction.get('pspReference')
-                    transaction_id = payout_id.transaction_ids.filtered(lambda tr: tr.reference == transaction_reference)
-                    if transaction_id:
+                    if transaction_id := payout_id.transaction_ids.filtered(
+                        lambda tr: tr.reference == transaction_reference
+                    ):
                         new_transactions = False
                         if transaction_id in pending_transaction_ids:
                             # Update transaction status

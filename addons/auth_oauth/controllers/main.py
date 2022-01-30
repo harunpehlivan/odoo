@@ -78,8 +78,7 @@ class OAuthLogin(Home):
             p=provider['id'],
             r=werkzeug.urls.url_quote_plus(redirect),
         )
-        token = request.params.get('token')
-        if token:
+        if token := request.params.get('token'):
             state['t'] = token
         return state
 

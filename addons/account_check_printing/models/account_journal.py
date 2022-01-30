@@ -34,8 +34,7 @@ class AccountJournal(models.Model):
     @api.depends('check_manual_sequencing')
     def _compute_check_next_number(self):
         for journal in self:
-            sequence = journal.check_sequence_id
-            if sequence:
+            if sequence := journal.check_sequence_id:
                 journal.check_next_number = sequence.get_next_char(sequence.number_next_actual)
             else:
                 journal.check_next_number = 1

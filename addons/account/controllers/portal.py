@@ -99,8 +99,7 @@ class PortalAccount(CustomerPortal):
             return self._show_report(model=invoice_sudo, report_type=report_type, report_ref='account.account_invoices', download=download)
 
         values = self._invoice_get_page_view_values(invoice_sudo, access_token, **kw)
-        acquirers = values.get('acquirers')
-        if acquirers:
+        if acquirers := values.get('acquirers'):
             country_id = values.get('partner_id') and values.get('partner_id')[0].country_id.id
             values['acq_extra_fees'] = acquirers.get_acquirer_extra_fees(invoice_sudo.amount_residual, invoice_sudo.currency_id, country_id)
 

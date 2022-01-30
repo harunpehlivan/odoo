@@ -10,8 +10,9 @@ def _assign_default_nomeclature_id(cr, registry):
     company_ids_without_default_nomenclature_id  = env['res.company'].search([
         ('nomenclature_id', '=', False)
     ])
-    default_nomenclature_id = env.ref('barcodes.default_barcode_nomenclature', raise_if_not_found=False)
-    if default_nomenclature_id:
+    if default_nomenclature_id := env.ref(
+        'barcodes.default_barcode_nomenclature', raise_if_not_found=False
+    ):
         company_ids_without_default_nomenclature_id.write({
             'nomenclature_id': default_nomenclature_id.id,
         })

@@ -261,8 +261,7 @@ class AccountPaymentRegister(models.TransientModel):
     def _compute_partner_bank_id(self):
         ''' The default partner_bank_id will be the first available on the partner. '''
         for wizard in self:
-            available_partner_bank_accounts = wizard.partner_id.bank_ids
-            if available_partner_bank_accounts:
+            if available_partner_bank_accounts := wizard.partner_id.bank_ids:
                 wizard.partner_bank_id = available_partner_bank_accounts[0]._origin
             else:
                 wizard.partner_bank_id = False
@@ -356,7 +355,7 @@ class AccountPaymentRegister(models.TransientModel):
     def default_get(self, fields_list):
         # OVERRIDE
         res = super().default_get(fields_list)
-        
+
         if 'line_ids' in fields_list and 'line_ids' not in res:
 
             # Retrieve moves to pay from the context.
@@ -378,12 +377,13 @@ class AccountPaymentRegister(models.TransientModel):
 
                 if line.account_internal_type not in ('receivable', 'payable'):
                     continue
-                if line.currency_id:
-                    if line.currency_id.is_zero(line.amount_residual_currency):
-                        continue
-                else:
-                    if line.company_currency_id.is_zero(line.amount_residual):
-                        continue
+                if (
+                    line.currency_id
+                    and line.currency_id.is_zero(line.amount_residual_currency)
+                    or not line.currency_id
+                    and line.company_currency_id.is_zero(line.amount_residual)
+                ):
+                    continue
                 available_lines |= line
 
             # Check.
@@ -395,7 +395,7 @@ class AccountPaymentRegister(models.TransientModel):
                 raise UserError(_("You can't register payments for journal items being either all inbound, either all outbound."))
 
             res['line_ids'] = [(6, 0, available_lines.ids)]
-        
+
         return res
 
     # -------------------------------------------------------------------------

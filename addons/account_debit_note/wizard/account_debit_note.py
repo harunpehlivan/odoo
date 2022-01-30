@@ -39,8 +39,18 @@ class AccountDebitNote(models.TransientModel):
     def _compute_from_moves(self):
         for record in self:
             move_ids = record.move_ids
-            record.move_type = move_ids[0].move_type if len(move_ids) == 1 or not any(m.move_type != move_ids[0].move_type for m in move_ids) else False
-            record.journal_type = record.move_type in ['in_refund', 'in_invoice'] and 'purchase' or 'sale'
+            record.move_type = (
+                move_ids[0].move_type
+                if len(move_ids) == 1
+                or all(m.move_type == move_ids[0].move_type for m in move_ids)
+                else False
+            )
+
+            record.journal_type = (
+                'purchase'
+                if record.move_type in ['in_refund', 'in_invoice']
+                else 'sale'
+            )
 
     def _prepare_default_values(self, move):
         if move.move_type in ('in_refund', 'out_refund'):

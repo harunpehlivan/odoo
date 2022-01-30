@@ -35,12 +35,13 @@ class AccountPaymentTerm(models.Model):
         self.ensure_one()
         date_ref = date_ref or fields.Date.context_today(self)
         amount = value
-        sign = value < 0 and -1 or 1
+        sign = -1 if value < 0 else 1
         result = []
-        if not currency and self.env.context.get('currency_id'):
-            currency = self.env['res.currency'].browse(self.env.context['currency_id'])
-        elif not currency:
-            currency = self.env.company.currency_id
+        if not currency:
+            if self.env.context.get('currency_id'):
+                currency = self.env['res.currency'].browse(self.env.context['currency_id'])
+            else:
+                currency = self.env.company.currency_id
         for line in self.line_ids:
             if line.value == 'fixed':
                 amt = sign * currency.round(line.value_amount)
@@ -64,8 +65,7 @@ class AccountPaymentTerm(models.Model):
             result.append((fields.Date.to_string(next_date), amt))
             amount -= amt
         amount = sum(amt for _, amt in result)
-        dist = currency.round(value - amount)
-        if dist:
+        if dist := currency.round(value - amount):
             last_date = result and result[-1][0] or fields.Date.context_today(self)
             result.append((last_date, dist))
         return result

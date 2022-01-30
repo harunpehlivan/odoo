@@ -73,7 +73,7 @@ class ResPartner(models.Model):
             if url:
                 query['redirect'] = url
             else:
-                fragment = dict()
+                fragment = {}
                 base = '/web#'
                 if action == '/mail/view':
                     base = '/mail/view?'

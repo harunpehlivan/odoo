@@ -78,15 +78,15 @@ class ODSReader(object):
                         for rr in range(int(repeat)):  # repeated?
                             arrCells.append(textContent)
                 else:
-                    for rr in range(int(repeat)):
+                    for _ in range(int(repeat)):
                         arrCells.append("")
 
             # if row contained something
             if arrCells:
                 arrRows.append(arrCells)
 
-            #else:
-            #    print ("Empty or commented row (", row_comment, ")")
+                #else:
+                #    print ("Empty or commented row (", row_comment, ")")
 
         self.SHEETS[name] = arrRows
 

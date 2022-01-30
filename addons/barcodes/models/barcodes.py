@@ -70,9 +70,9 @@ class BarcodeNomenclature(models.Model):
 
     # Returns a valid zero padded ean13 from an ean prefix. the ean prefix must be a string.
     def sanitize_ean(self, ean):
-        ean = ean[0:13]
+        ean = ean[:13]
         ean = ean + (13-len(ean))*'0'
-        return ean[0:12] + str(self.ean_checksum(ean))
+        return ean[:12] + str(self.ean_checksum(ean))
 
     # Returns a valid zero padded UPC-A from a UPC-A prefix. the UPC-A prefix must be a string.
     def sanitize_upc(self, upc):
@@ -92,9 +92,7 @@ class BarcodeNomenclature(models.Model):
         }
 
         barcode = barcode.replace("\\", "\\\\").replace("{", '\{').replace("}", "\}").replace(".", "\.")
-        numerical_content = re.search("[{][N]*[D]*[}]", pattern) # look for numerical content in pattern
-
-        if numerical_content: # the pattern encodes a numerical content
+        if numerical_content := re.search("[{][N]*[D]*[}]", pattern):
             num_start = numerical_content.start() # start index of numerical content
             num_end = numerical_content.end() # end index of numerical content
             value_string = barcode[num_start:num_end-2] # numerical content in barcode
@@ -132,9 +130,16 @@ class BarcodeNomenclature(models.Model):
             'value': 0,
         }
 
-        rules = []
-        for rule in self.rule_ids:
-            rules.append({'type': rule.type, 'encoding': rule.encoding, 'sequence': rule.sequence, 'pattern': rule.pattern, 'alias': rule.alias})
+        rules = [
+            {
+                'type': rule.type,
+                'encoding': rule.encoding,
+                'sequence': rule.sequence,
+                'pattern': rule.pattern,
+                'alias': rule.alias,
+            }
+            for rule in self.rule_ids
+        ]
 
         for rule in rules:
             cur_barcode = barcode

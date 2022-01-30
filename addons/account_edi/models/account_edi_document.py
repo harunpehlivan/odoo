@@ -85,7 +85,7 @@ class AccountEdiDocument(models.Model):
                         'error': move_result.get('error', False),
                     }
                     if not values.get('error'):
-                        values.update({'state': 'sent'})
+                        values['state'] = 'sent'
                     document.write(values)
                     if not old_attachment.res_model or not old_attachment.res_id:
                         attachments_to_unlink |= old_attachment
@@ -193,4 +193,4 @@ class AccountEdiDocument(models.Model):
         :param job_count: Limit to the number of jobs to process among the ones that are available for treatment.
         """
         jobs = self.filtered(lambda d: d.edi_format_id._needs_web_services())._prepare_jobs()
-        self._process_jobs(jobs[0:job_count or len(jobs)])
+        self._process_jobs(jobs[:job_count or len(jobs)])

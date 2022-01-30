@@ -236,14 +236,16 @@ class AccountJournal(models.Model):
     @api.depends('company_id', 'type')
     def _compute_suspense_account_id(self):
         for journal in self:
-            if journal.type not in ('bank', 'cash'):
+            if (
+                journal.type not in ('bank', 'cash')
+                or not journal.suspense_account_id
+                and not journal.company_id.account_journal_suspense_account_id
+            ):
                 journal.suspense_account_id = False
             elif journal.suspense_account_id:
                 journal.suspense_account_id = journal.suspense_account_id
-            elif journal.company_id.account_journal_suspense_account_id:
-                journal.suspense_account_id = journal.company_id.account_journal_suspense_account_id
             else:
-                journal.suspense_account_id = False
+                journal.suspense_account_id = journal.company_id.account_journal_suspense_account_id
 
     def _compute_alias_domain(self):
         alias_domain = self._default_alias_domain()
@@ -339,8 +341,7 @@ class AccountJournal(models.Model):
             GROUP BY account.name
             HAVING COUNT(DISTINCT journal.id) > 1
         ''', [tuple(accounts.ids)])
-        res = self._cr.fetchone()
-        if res:
+        if res := self._cr.fetchone():
             raise ValidationError(_(
                 "The account %(account_name)s can't be shared between multiple journals: %(journals)s",
                 account_name=res[0],
@@ -424,16 +425,14 @@ class AccountJournal(models.Model):
                         'company_id': company.id,
                         'partner_id': company.partner_id.id,
                     })
-            if 'currency_id' in vals:
-                if journal.bank_account_id:
-                    journal.bank_account_id.currency_id = vals['currency_id']
+            if 'currency_id' in vals and journal.bank_account_id:
+                journal.bank_account_id.currency_id = vals['currency_id']
             if 'bank_account_id' in vals:
                 if not vals.get('bank_account_id'):
                     raise UserError(_('You cannot remove the bank account from the journal once set.'))
-                else:
-                    bank_account = self.env['res.partner.bank'].browse(vals['bank_account_id'])
-                    if bank_account.partner_id != company.partner_id:
-                        raise UserError(_("The partners of the journal's company and the related bank account mismatch."))
+                bank_account = self.env['res.partner.bank'].browse(vals['bank_account_id'])
+                if bank_account.partner_id != company.partner_id:
+                    raise UserError(_("The partners of the journal's company and the related bank account mismatch."))
             if 'alias_name' in vals:
                 journal._update_mail_alias(vals)
             if 'restrict_mode_hash_table' in vals and not vals.get('restrict_mode_hash_table'):
@@ -459,7 +458,7 @@ class AccountJournal(models.Model):
 
     @api.model
     def get_next_bank_cash_default_code(self, journal_type, company):
-        journal_code_base = (journal_type == 'cash' and 'CSH' or 'BNK')
+        journal_code_base = 'CSH' if journal_type == 'cash' else 'BNK'
         journals = self.env['account.journal'].search([('code', 'like', journal_code_base + '%'), ('company_id', '=', company.id)])
         for num in range(1, 100):
             # journal_code has a maximal size of 5, hence we can enforce the boundary num < 100
@@ -564,9 +563,13 @@ class AccountJournal(models.Model):
     def set_bank_account(self, acc_number, bank_id=None):
         """ Create a res.partner.bank (if not exists) and set it as value of the field bank_account_id """
         self.ensure_one()
-        res_partner_bank = self.env['res.partner.bank'].search([('sanitized_acc_number', '=', sanitize_account_number(acc_number)),
-                                                                ('company_id', '=', self.company_id.id)], limit=1)
-        if res_partner_bank:
+        if res_partner_bank := self.env['res.partner.bank'].search(
+            [
+                ('sanitized_acc_number', '=', sanitize_account_number(acc_number)),
+                ('company_id', '=', self.company_id.id),
+            ],
+            limit=1,
+        ):
             self.bank_account_id = res_partner_bank.id
         else:
             self.bank_account_id = self.env['res.partner.bank'].create({

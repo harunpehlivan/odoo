@@ -62,5 +62,9 @@ class ResCurrency(models.Model):
                 currency_rates[user_company.currency_id.id] / currency_rates[company.currency_id.id],
                 user_currency.decimal_places,
             ))
-        query = '(VALUES %s) AS currency_table(company_id, rate, precision)' % ','.join('(%s, %s, %s)' for i in companies)
+        query = (
+            '(VALUES %s) AS currency_table(company_id, rate, precision)'
+            % ','.join('(%s, %s, %s)' for _ in companies)
+        )
+
         return self.env.cr.mogrify(query, conversion_rates).decode(self.env.cr.connection.encoding)

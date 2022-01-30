@@ -66,8 +66,10 @@ class AccountPartialReconcile(models.Model):
 
     @api.constrains('debit_currency_id', 'credit_currency_id')
     def _check_required_computed_currencies(self):
-        bad_partials = self.filtered(lambda partial: not partial.debit_currency_id or not partial.credit_currency_id)
-        if bad_partials:
+        if bad_partials := self.filtered(
+            lambda partial: not partial.debit_currency_id
+            or not partial.credit_currency_id
+        ):
             raise ValidationError(_("Missing foreign currencies on partials having ids: %s", bad_partials.ids))
 
     # -------------------------------------------------------------------------
@@ -180,11 +182,7 @@ class AccountPartialReconcile(models.Model):
                     # Percentage made on foreign currency.
                     percentage = partial_amount_currency / move_values['total_amount_currency']
 
-                if rate_amount:
-                    payment_rate = rate_amount_currency / rate_amount
-                else:
-                    payment_rate = 0.0
-
+                payment_rate = rate_amount_currency / rate_amount if rate_amount else 0.0
                 partial_vals = {
                     'partial': partial,
                     'percentage': percentage,
@@ -212,14 +210,22 @@ class AccountPartialReconcile(models.Model):
         account = base_line.company_id.account_cash_basis_base_account_id or base_line.account_id
         return {
             'name': base_line.move_id.name,
-            'debit': balance if balance > 0.0 else 0.0,
+            'debit': max(balance, 0.0),
             'credit': -balance if balance < 0.0 else 0.0,
             'amount_currency': amount_currency,
             'currency_id': base_line.currency_id.id,
             'partner_id': base_line.partner_id.id,
             'account_id': account.id,
             'tax_ids': [(6, 0, base_line.tax_ids.ids)],
-            'tax_tag_ids': [(6, 0, base_line._convert_tags_for_cash_basis(base_line.tax_tag_ids).ids)],
+            'tax_tag_ids': [
+                (
+                    6,
+                    0,
+                    base_line._convert_tags_for_cash_basis(
+                        base_line.tax_tag_ids
+                    ).ids,
+                )
+            ],
             'tax_exigible': True,
         }
 
@@ -255,13 +261,22 @@ class AccountPartialReconcile(models.Model):
         '''
         return {
             'name': tax_line.name,
-            'debit': balance if balance > 0.0 else 0.0,
+            'debit': max(balance, 0.0),
             'credit': -balance if balance < 0.0 else 0.0,
             'tax_base_amount': tax_line.tax_base_amount,
             'tax_repartition_line_id': tax_line.tax_repartition_line_id.id,
             'tax_ids': [(6, 0, tax_line.tax_ids.ids)],
-            'tax_tag_ids': [(6, 0, tax_line._convert_tags_for_cash_basis(tax_line.tax_tag_ids).ids)],
-            'account_id': tax_line.tax_repartition_line_id.account_id.id or tax_line.account_id.id,
+            'tax_tag_ids': [
+                (
+                    6,
+                    0,
+                    tax_line._convert_tags_for_cash_basis(
+                        tax_line.tax_tag_ids
+                    ).ids,
+                )
+            ],
+            'account_id': tax_line.tax_repartition_line_id.account_id.id
+            or tax_line.account_id.id,
             'amount_currency': amount_currency,
             'currency_id': tax_line.currency_id.id,
             'partner_id': tax_line.partner_id.id,
@@ -440,11 +455,13 @@ class AccountPartialReconcile(models.Model):
 
             amount_currency = residual_amount_per_group[grouping_key]
             balance = partial_values['payment_rate'] and amount_currency / partial_values['payment_rate'] or 0.0
-            line_vals.update({
-                'debit': balance if balance > 0.0 else 0.0,
-                'credit': -balance if balance < 0.0 else 0.0,
-                'amount_currency': amount_currency,
-            })
+            line_vals.update(
+                {
+                    'debit': max(balance, 0.0),
+                    'credit': -balance if balance < 0.0 else 0.0,
+                    'amount_currency': amount_currency,
+                }
+            )
 
     def _create_tax_cash_basis_moves(self):
         ''' Create the tax cash basis journal entries.
@@ -520,10 +537,13 @@ class AccountPartialReconcile(models.Model):
                             balance = aggregated_vals['debit'] - aggregated_vals['credit']
                             balance += cb_base_line_vals['debit'] - cb_base_line_vals['credit']
 
-                            aggregated_vals.update({
-                                'debit': balance if balance > 0.0 else 0.0,
-                                'credit': -balance if balance < 0.0 else 0.0,
-                            })
+                            aggregated_vals.update(
+                                {
+                                    'debit': max(balance, 0.0),
+                                    'credit': -balance if balance < 0.0 else 0.0,
+                                }
+                            )
+
                             aggregated_vals['amount_currency'] += cb_base_line_vals['amount_currency']
                         else:
                             partial_lines_to_create[grouping_key] = {

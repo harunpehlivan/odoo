@@ -27,8 +27,7 @@ class MailTemplate(models.Model):
                 if doc.edi_format_id._is_embedding_to_invoice_pdf_needed():
                     continue
 
-                attachment = doc.attachment_id
-                if attachment:
+                if attachment := doc.attachment_id:
                     record_data.setdefault('attachments', [])
                     record_data['attachments'].append((attachment.name, attachment.datas))
 

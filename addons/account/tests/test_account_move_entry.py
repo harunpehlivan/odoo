@@ -334,10 +334,13 @@ class TestAccountMove(AccountTestInvoicingCommon):
         # Same check using write instead of unlink.
         with self.assertRaises(UserError), self.cr.savepoint():
             balance = self.test_move.line_ids[0].balance + 5
-            self.test_move.line_ids[0].write({
-                'debit': balance if balance > 0.0 else 0.0,
-                'credit': -balance if balance < 0.0 else 0.0,
-            })
+            self.test_move.line_ids[0].write(
+                {
+                    'debit': max(balance, 0.0),
+                    'credit': -balance if balance < 0.0 else 0.0,
+                }
+            )
+
 
         # You can remove journal items if the related journal entry is still balanced.
         self.test_move.line_ids.unlink()
@@ -452,7 +455,10 @@ class TestAccountMove(AccountTestInvoicingCommon):
             self.assertEqual(copy.name, f"{prefix}{c}")
 
     def test_journal_sequence_multiple_type(self):
-        entry, entry2, invoice, invoice2, refund, refund2 = (self.test_move.copy({'date': self.test_move.date}) for i in range(6))
+        entry, entry2, invoice, invoice2, refund, refund2 = (
+            self.test_move.copy({'date': self.test_move.date}) for _ in range(6)
+        )
+
         (invoice + invoice2 + refund + refund2).write({
             'journal_id': self.company_data['default_journal_sale'],
             'partner_id': 1,
@@ -491,7 +497,11 @@ class TestAccountMove(AccountTestInvoicingCommon):
 
     def test_journal_sequence_ordering(self):
         self.test_move.name = 'XMISC/2016/00001'
-        copies = reduce((lambda x, y: x+y), [self.test_move.copy({'date': self.test_move.date}) for i in range(6)])
+        copies = reduce(
+            lambda x, y: x + y,
+            [self.test_move.copy({'date': self.test_move.date}) for _ in range(6)],
+        )
+
 
         copies[0].date = '2019-03-05'
         copies[1].date = '2019-03-06'

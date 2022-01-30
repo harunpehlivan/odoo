@@ -147,8 +147,10 @@ class BaseAutomation(models.Model):
             the smallest action delay, or restore the default 4 hours if there
             is no time based action.
         """
-        cron = self.env.ref('base_automation.ir_cron_data_base_automation_check', raise_if_not_found=False)
-        if cron:
+        if cron := self.env.ref(
+            'base_automation.ir_cron_data_base_automation_check',
+            raise_if_not_found=False,
+        ):
             actions = self.with_context(active_test=True).search([('trigger', '=', 'on_time')])
             cron.try_write({
                 'active': bool(actions),
@@ -226,11 +228,9 @@ class BaseAutomation(models.Model):
     @api.model
     def _add_postmortem_action(self, e):
         if self.user_has_groups('base.group_user'):
-            e.context = {}
-            e.context['exception_class'] = 'base_automation'
-            e.context['base_automation'] = {
-                'id': self.id,
-                'name': self.name,
+            e.context = {
+                'exception_class': 'base_automation',
+                'base_automation': {'id': self.id, 'name': self.name},
             }
 
     def _process(self, records, domain_post=None):
@@ -478,9 +478,8 @@ class BaseAutomation(models.Model):
                 fields.Datetime.from_string(record_dt),
                 compute_leaves=True,
             )
-        else:
-            delay = DATE_RANGE_FUNCTION[action.trg_date_range_type](action.trg_date_range)
-            return fields.Datetime.from_string(record_dt) + delay
+        delay = DATE_RANGE_FUNCTION[action.trg_date_range_type](action.trg_date_range)
+        return fields.Datetime.from_string(record_dt) + delay
 
     @api.model
     def _check(self, automatic=False, use_new_cursor=False):

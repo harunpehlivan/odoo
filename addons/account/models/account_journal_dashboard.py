@@ -29,10 +29,8 @@ class account_journal(models.Model):
                 journal.kanban_dashboard_graph = False
 
     def _get_json_activity_data(self):
-        for journal in self:
-            activities = []
-            # search activity on move on the journal
-            sql_query = '''
+        # search activity on move on the journal
+        sql_query = '''
                 SELECT act.id,
                     act.res_id,
                     act.res_model,
@@ -49,6 +47,8 @@ class account_journal(models.Model):
                 WHERE act.res_model = 'account.move'
                     AND m.journal_id = %s
             '''
+        for journal in self:
+            activities = []
             self.env.cr.execute(sql_query, (journal.id,))
             for activity in self.env.cr.dictfetchall():
                 act = {
@@ -143,9 +143,8 @@ class account_journal(models.Model):
         return [{'values': data, 'title': graph_title, 'key': graph_key, 'area': True, 'color': color, 'is_sample_data': is_sample_data}]
 
     def get_bar_graph_datas(self):
-        data = []
         today = fields.Datetime.now(self)
-        data.append({'label': _('Due'), 'value':0.0, 'type': 'past'})
+        data = [{'label': _('Due'), 'value': 0.0, 'type': 'past'}]
         day_of_week = int(format_datetime(today, 'e', locale=get_lang(self.env).code))
         first_day_of_week = today + timedelta(days=-day_of_week+1)
         for i in range(-1,4):
@@ -166,7 +165,7 @@ class account_journal(models.Model):
         (select_sql_clause, query_args) = self._get_bar_graph_select_query()
         query = ''
         start_date = (first_day_of_week + timedelta(days=-7))
-        for i in range(0,6):
+        for i in range(6):
             if i == 0:
                 query += "("+select_sql_clause+" and invoice_date_due < '"+start_date.strftime(DF)+"')"
             elif i == 5:
@@ -179,7 +178,7 @@ class account_journal(models.Model):
         self.env.cr.execute(query, query_args)
         query_results = self.env.cr.dictfetchall()
         is_sample_data = True
-        for index in range(0, len(query_results)):
+        for index in range(len(query_results)):
             if query_results[index].get('aggr_date') != None:
                 is_sample_data = False
                 data[index]['value'] = query_results[index].get('total')
@@ -187,7 +186,7 @@ class account_journal(models.Model):
         [graph_title, graph_key] = self._graph_title_and_key()
 
         if is_sample_data:
-            for index in range(0, len(query_results)):
+            for index in range(len(query_results)):
                 data[index]['type'] = 'o_sample_data'
                 # we use unrealistic values for the sample data
                 data[index]['value'] = random.randint(0, 20)
@@ -248,8 +247,7 @@ class account_journal(models.Model):
 
             to_check_ids = self.to_check_ids()
             number_to_check = len(to_check_ids)
-            to_check_balance = sum([r.amount for r in to_check_ids])
-        #TODO need to check if all invoices are in the same currency than the journal!!!!
+            to_check_balance = sum(r.amount for r in to_check_ids)
         elif self.type in ['sale', 'purchase']:
             title = _('Bills to pay') if self.type == 'purchase' else _('Invoices owed to you')
             self.env['account.move'].flush(['amount_residual', 'currency_id', 'move_type', 'invoice_date', 'company_id', 'journal_id', 'date', 'state', 'payment_state'])
@@ -283,13 +281,21 @@ class account_journal(models.Model):
             (number_waiting, sum_waiting) = self._count_results_and_sum_amounts(query_results_to_pay, currency, curr_cache=curr_cache)
             (number_draft, sum_draft) = self._count_results_and_sum_amounts(query_results_drafts, currency, curr_cache=curr_cache)
             (number_late, sum_late) = self._count_results_and_sum_amounts(late_query_results, currency, curr_cache=curr_cache)
-            read = self.env['account.move'].read_group([('journal_id', '=', self.id), ('to_check', '=', True)], ['amount_total'], 'journal_id', lazy=False)
-            if read:
+            if read := self.env['account.move'].read_group(
+                [('journal_id', '=', self.id), ('to_check', '=', True)],
+                ['amount_total'],
+                'journal_id',
+                lazy=False,
+            ):
                 number_to_check = read[0]['__count']
                 to_check_balance = read[0]['amount_total']
         elif self.type == 'general':
-            read = self.env['account.move'].read_group([('journal_id', '=', self.id), ('to_check', '=', True)], ['amount_total'], 'journal_id', lazy=False)
-            if read:
+            if read := self.env['account.move'].read_group(
+                [('journal_id', '=', self.id), ('to_check', '=', True)],
+                ['amount_total'],
+                'journal_id',
+                lazy=False,
+            ):
                 number_to_check = read[0]['__count']
                 to_check_balance = read[0]['amount_total']
 
@@ -432,8 +438,7 @@ class account_journal(models.Model):
         self.ensure_one()
         domain = self.env['account.move.line']._get_suspense_moves_domain()
         domain += [('journal_id', '=', self.id),('statement_line_id.is_reconciled', '=', False)]
-        statement_line_ids = self.env['account.move.line'].search(domain).mapped('statement_line_id')
-        return statement_line_ids
+        return self.env['account.move.line'].search(domain).mapped('statement_line_id')
 
     def _select_action_to_open(self):
         self.ensure_one()
@@ -472,7 +477,12 @@ class account_journal(models.Model):
             'search_default_journal_id': self.id,
         })
 
-        domain_type_field = action['res_model'] == 'account.move.line' and 'move_id.move_type' or 'move_type' # The model can be either account.move or account.move.line
+        domain_type_field = (
+            'move_id.move_type'
+            if action['res_model'] == 'account.move.line'
+            else 'move_type'
+        )
+
 
         # Override the domain only if the action was not explicitly specified in order to keep the
         # original action domain.

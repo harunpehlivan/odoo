@@ -319,8 +319,7 @@ class AccountPayment(models.Model):
     def _compute_partner_bank_id(self):
         ''' The default partner_bank_id will be the first available on the partner. '''
         for pay in self:
-            available_partner_bank_accounts = pay.partner_id.bank_ids
-            if available_partner_bank_accounts:
+            if available_partner_bank_accounts := pay.partner_id.bank_ids:
                 pay.partner_bank_id = available_partner_bank_accounts[0]._origin
             else:
                 pay.partner_bank_id = False
@@ -411,12 +410,9 @@ class AccountPayment(models.Model):
                 and pay.payment_type == 'outbound' \
                 and pay.currency_id:
 
-                if pay.partner_bank_id:
-                    qr_code = pay.partner_bank_id.build_qr_code_url(pay.amount, pay.ref, pay.ref, pay.currency_id, pay.partner_id)
-                else:
-                    qr_code = None
-
-                if qr_code:
+                if qr_code := pay.partner_bank_id.build_qr_code_url(
+                    pay.amount, pay.ref, pay.ref, pay.currency_id, pay.partner_id
+                ):
                     pay.qr_code = '''
                         <br/>
                         <img class="border border-dark rounded" src="{qr_code}"/>
@@ -508,7 +504,7 @@ class AccountPayment(models.Model):
         ''', {
             'payment_ids': tuple(stored_payments.ids)
         })
-        query_res = dict((payment_id, statement_ids) for payment_id, statement_ids in self._cr.fetchall())
+        query_res = dict(self._cr.fetchall())
 
         for pay in self:
             statement_ids = query_res.get(pay.id, [])
@@ -630,9 +626,11 @@ class AccountPayment(models.Model):
             move_vals_to_write = {}
             payment_vals_to_write = {}
 
-            if 'journal_id' in changed_fields:
-                if pay.journal_id.type not in ('bank', 'cash'):
-                    raise UserError(_("A payment must always belongs to a bank or cash journal."))
+            if 'journal_id' in changed_fields and pay.journal_id.type not in (
+                'bank',
+                'cash',
+            ):
+                raise UserError(_("A payment must always belongs to a bank or cash journal."))
 
             if 'line_ids' in changed_fields:
                 all_lines = move.line_ids
@@ -695,10 +693,21 @@ class AccountPayment(models.Model):
         if self._context.get('skip_account_move_synchronization'):
             return
 
-        if not any(field_name in changed_fields for field_name in (
-            'date', 'amount', 'payment_type', 'partner_type', 'payment_reference', 'is_internal_transfer',
-            'currency_id', 'partner_id', 'destination_account_id', 'partner_bank_id',
-        )):
+        if all(
+            field_name not in changed_fields
+            for field_name in (
+                'date',
+                'amount',
+                'payment_type',
+                'partner_type',
+                'payment_reference',
+                'is_internal_transfer',
+                'currency_id',
+                'partner_id',
+                'destination_account_id',
+                'partner_bank_id',
+            )
+        ):
             return
 
         for pay in self.with_context(skip_account_move_synchronization=True):

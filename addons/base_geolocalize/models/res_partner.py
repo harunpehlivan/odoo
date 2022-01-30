@@ -19,13 +19,13 @@ class ResPartner(models.Model):
     def geo_localize(self):
         # We need country names in English below
         for partner in self.with_context(lang='en_US'):
-            result = self._geo_localize(partner.street,
-                                        partner.zip,
-                                        partner.city,
-                                        partner.state_id.name,
-                                        partner.country_id.name)
-
-            if result:
+            if result := self._geo_localize(
+                partner.street,
+                partner.zip,
+                partner.city,
+                partner.state_id.name,
+                partner.country_id.name,
+            ):
                 partner.write({
                     'partner_latitude': result[0],
                     'partner_longitude': result[1],

@@ -53,8 +53,7 @@ class AccountPayment(models.Model):
         """, {
             'ids': tuple(self.ids),
         })
-        res = self.env.cr.dictfetchall()
-        if res:
+        if res := self.env.cr.dictfetchall():
             raise ValidationError(_(
                 'The following numbers are already used:\n%s',
                 '\n'.join(_(
@@ -194,10 +193,7 @@ class AccountPayment(models.Model):
         """ Returns the data structure used by the template : a list of dicts containing what to print on pages.
         """
         stub_pages = self._check_make_stub_pages() or [False]
-        pages = []
-        for i, p in enumerate(stub_pages):
-            pages.append(self._check_build_page_info(i, p))
-        return pages
+        return [self._check_build_page_info(i, p) for i, p in enumerate(stub_pages)]
 
     def _check_make_stub_pages(self):
         """ The stub is the summary of paid invoices. It may spill on several pages, in which case only the check on
@@ -210,17 +206,14 @@ class AccountPayment(models.Model):
 
         invoices = self.move_id._get_reconciled_invoices().sorted(key=lambda r: r.invoice_date_due or fields.Date.context_today(self))
         debits = invoices.filtered(lambda r: r.move_type == 'in_invoice')
-        credits = invoices.filtered(lambda r: r.move_type == 'in_refund')
-
-        # Prepare the stub lines
-        if not credits:
-            stub_lines = [self._check_make_stub_line(inv) for inv in invoices]
-        else:
+        if credits := invoices.filtered(lambda r: r.move_type == 'in_refund'):
             stub_lines = [{'header': True, 'name': "Bills"}]
             stub_lines += [self._check_make_stub_line(inv) for inv in debits]
             stub_lines += [{'header': True, 'name': "Refunds"}]
             stub_lines += [self._check_make_stub_line(inv) for inv in credits]
 
+        else:
+            stub_lines = [self._check_make_stub_line(inv) for inv in invoices]
         # Crop the stub lines or split them on multiple pages
         if not multi_stub:
             # If we need to crop the stub, leave place for an ellipsis line

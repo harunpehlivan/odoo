@@ -13,17 +13,11 @@ class ReportJournal(models.AbstractModel):
         if isinstance(journal_ids, int):
             journal_ids = [journal_ids]
 
-        move_state = ['draft', 'posted']
-        if target_move == 'posted':
-            move_state = ['posted']
-
+        move_state = ['posted'] if target_move == 'posted' else ['draft', 'posted']
         query_get_clause = self._get_query_get_clause(data)
         params = [tuple(move_state), tuple(journal_ids)] + query_get_clause[2]
         query = 'SELECT "account_move_line".id FROM ' + query_get_clause[0] + ', account_move am, account_account acc WHERE "account_move_line".account_id = acc.id AND "account_move_line".move_id=am.id AND am.state IN %s AND "account_move_line".journal_id IN %s AND ' + query_get_clause[1] + ' ORDER BY '
-        if sort_selection == 'date':
-            query += '"account_move_line".date'
-        else:
-            query += 'am.name'
+        query += '"account_move_line".date' if sort_selection == 'date' else 'am.name'
         query += ', "account_move_line".move_id, acc.code'
         self.env.cr.execute(query, tuple(params))
         ids = (x[0] for x in self.env.cr.fetchall())
@@ -103,9 +97,13 @@ class ReportJournal(models.AbstractModel):
         target_move = data['form'].get('target_move', 'all')
         sort_selection = data['form'].get('sort_selection', 'date')
 
-        res = {}
-        for journal in data['form']['journal_ids']:
-            res[journal] = self.with_context(data['form'].get('used_context', {})).lines(target_move, journal, sort_selection, data)
+        res = {
+            journal: self.with_context(data['form'].get('used_context', {})).lines(
+                target_move, journal, sort_selection, data
+            )
+            for journal in data['form']['journal_ids']
+        }
+
         return {
             'doc_ids': data['form']['journal_ids'],
             'doc_model': self.env['account.journal'],

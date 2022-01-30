@@ -46,7 +46,12 @@ class AccountMoveReversal(models.TransientModel):
         if 'move_ids' in fields:
             res['move_ids'] = [(6, 0, move_ids.ids)]
         if 'refund_method' in fields:
-            res['refund_method'] = (len(move_ids) > 1 or move_ids.move_type == 'entry') and 'cancel' or 'refund'
+            res['refund_method'] = (
+                'cancel'
+                if (len(move_ids) > 1 or move_ids.move_type == 'entry')
+                else 'refund'
+            )
+
         return res
 
     @api.depends('move_ids')
@@ -60,15 +65,23 @@ class AccountMoveReversal(models.TransientModel):
     def _prepare_default_reversal(self, move):
         reverse_date = self.date if self.date_mode == 'custom' else move.date
         return {
-            'ref': _('Reversal of: %(move_name)s, %(reason)s', move_name=move.name, reason=self.reason) 
-                   if self.reason
-                   else _('Reversal of: %s', move.name),
+            'ref': _(
+                'Reversal of: %(move_name)s, %(reason)s',
+                move_name=move.name,
+                reason=self.reason,
+            )
+            if self.reason
+            else _('Reversal of: %s', move.name),
             'date': reverse_date,
-            'invoice_date': move.is_invoice(include_receipts=True) and (self.date or move.date) or False,
-            'journal_id': self.journal_id and self.journal_id.id or move.journal_id.id,
+            'invoice_date': move.is_invoice(include_receipts=True)
+            and (self.date or move.date)
+            or False,
+            'journal_id': self.journal_id
+            and self.journal_id.id
+            or move.journal_id.id,
             'invoice_payment_term_id': None,
             'invoice_user_id': move.invoice_user_id.id,
-            'auto_post': True if reverse_date > fields.Date.context_today(self) else False,
+            'auto_post': reverse_date > fields.Date.context_today(self),
         }
 
     def _reverse_moves_post_hook(self, moves):
@@ -80,10 +93,7 @@ class AccountMoveReversal(models.TransientModel):
         moves = self.move_ids
 
         # Create default values.
-        default_values_list = []
-        for move in moves:
-            default_values_list.append(self._prepare_default_reversal(move))
-
+        default_values_list = [self._prepare_default_reversal(move) for move in moves]
         batches = [
             [self.env['account.move'], [], True],   # Moves to be cancelled by the reverses.
             [self.env['account.move'], [], False],  # Others.
@@ -101,9 +111,17 @@ class AccountMoveReversal(models.TransientModel):
             new_moves = moves._reverse_moves(default_values_list, cancel=is_cancel_needed)
 
             if self.refund_method == 'modify':
-                moves_vals_list = []
-                for move in moves.with_context(include_business_fields=True):
-                    moves_vals_list.append(move.copy_data({'date': self.date if self.date_mode == 'custom' else move.date})[0])
+                moves_vals_list = [
+                    move.copy_data(
+                        {
+                            'date': self.date
+                            if self.date_mode == 'custom'
+                            else move.date
+                        }
+                    )[0]
+                    for move in moves.with_context(include_business_fields=True)
+                ]
+
                 new_moves = self.env['account.move'].create(moves_vals_list)
 
             moves_to_redirect |= new_moves

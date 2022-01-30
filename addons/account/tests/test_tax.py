@@ -172,7 +172,7 @@ class TestTaxCommon(AccountTestInvoicingCommon):
     def _check_compute_all_results(self, total_included, total_excluded, taxes, res):
         self.assertAlmostEqual(res['total_included'], total_included)
         self.assertAlmostEqual(res['total_excluded'], total_excluded)
-        for i in range(0, len(taxes)):
+        for i in range(len(taxes)):
             self.assertAlmostEqual(res['taxes'][i]['base'], taxes[i][0])
             self.assertAlmostEqual(res['taxes'][i]['amount'], taxes[i][1])
 

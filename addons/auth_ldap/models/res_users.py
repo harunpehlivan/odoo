@@ -16,15 +16,13 @@ class Users(models.Model):
         except AccessDenied as e:
             with registry(db).cursor() as cr:
                 cr.execute("SELECT id FROM res_users WHERE lower(login)=%s", (login,))
-                res = cr.fetchone()
-                if res:
+                if res := cr.fetchone():
                     raise e
 
                 env = api.Environment(cr, SUPERUSER_ID, {})
                 Ldap = env['res.company.ldap']
                 for conf in Ldap._get_ldap_dicts():
-                    entry = Ldap._authenticate(conf, login, password)
-                    if entry:
+                    if entry := Ldap._authenticate(conf, login, password):
                         return Ldap._get_or_create_user(conf, login, entry)
                 raise e
 
@@ -45,8 +43,9 @@ class Users(models.Model):
         if new_passwd:
             Ldap = self.env['res.company.ldap']
             for conf in Ldap._get_ldap_dicts():
-                changed = Ldap._change_password(conf, self.env.user.login, old_passwd, new_passwd)
-                if changed:
+                if changed := Ldap._change_password(
+                    conf, self.env.user.login, old_passwd, new_passwd
+                ):
                     uid = self.env.user.id
                     self._set_empty_password(uid)
                     self.invalidate_cache(['password'], [uid])

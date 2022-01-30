@@ -69,9 +69,10 @@ class AccountFiscalPosition(models.Model):
     def map_accounts(self, accounts):
         """ Receive a dictionary having accounts in values and try to replace those accounts accordingly to the fiscal position.
         """
-        ref_dict = {}
-        for line in self.account_ids:
-            ref_dict[line.account_src_id] = line.account_dest_id
+        ref_dict = {
+            line.account_src_id: line.account_dest_id for line in self.account_ids
+        }
+
         for key, acc in accounts.items():
             if acc in ref_dict:
                 accounts[key] = ref_dict[acc]
@@ -170,11 +171,7 @@ class AccountFiscalPosition(models.Model):
         partner = PartnerObj.browse(partner_id)
 
         # if no delivery use invoicing
-        if delivery_id:
-            delivery = PartnerObj.browse(delivery_id)
-        else:
-            delivery = partner
-
+        delivery = PartnerObj.browse(delivery_id) if delivery_id else partner
         # partner manually set fiscal position always win
         if delivery.property_account_position_id or partner.property_account_position_id:
             return delivery.property_account_position_id or partner.property_account_position_id
@@ -274,9 +271,7 @@ class ResPartner(models.Model):
             return []
         if type(operand) not in (float, int):
             return []
-        sign = 1
-        if account_type == 'payable':
-            sign = -1
+        sign = -1 if account_type == 'payable' else 1
         res = self._cr.execute('''
             SELECT partner.id
             FROM res_partner partner
@@ -430,7 +425,7 @@ class ResPartner(models.Model):
     def _get_name_search_order_by_fields(self):
         res = super()._get_name_search_order_by_fields()
         partner_search_mode = self.env.context.get('res_partner_search_mode')
-        if not partner_search_mode in ('customer', 'supplier'):
+        if partner_search_mode not in ('customer', 'supplier'):
             return res
         order_by_field = 'COALESCE(res_partner.%s, 0) DESC,'
         if partner_search_mode == 'customer':
@@ -438,7 +433,7 @@ class ResPartner(models.Model):
         else:
             field = 'supplier_rank'
 
-        order_by_field = order_by_field % field
+        order_by_field %= field
         return '%s, %s' % (res, order_by_field % field) if res else order_by_field
 
     def _compute_bank_count(self):
@@ -481,10 +476,9 @@ class ResPartner(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        search_partner_mode = self.env.context.get('res_partner_search_mode')
-        is_customer = search_partner_mode == 'customer'
-        is_supplier = search_partner_mode == 'supplier'
-        if search_partner_mode:
+        if search_partner_mode := self.env.context.get('res_partner_search_mode'):
+            is_customer = search_partner_mode == 'customer'
+            is_supplier = search_partner_mode == 'supplier'
             for vals in vals_list:
                 if is_customer and 'customer_rank' not in vals:
                     vals['customer_rank'] = 1

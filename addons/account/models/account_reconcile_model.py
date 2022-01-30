@@ -71,7 +71,7 @@ class AccountReconcileModelLine(models.Model):
     @api.depends('tax_ids')
     def _compute_show_force_tax_included(self):
         for record in self:
-            record.show_force_tax_included = False if len(record.tax_ids) != 1 else True
+            record.show_force_tax_included = len(record.tax_ids) == 1
 
     @api.onchange('amount_type')
     def _onchange_amount_type(self):
@@ -94,7 +94,7 @@ class AccountReconcileModelLine(models.Model):
         for record in self:
             if record.amount_type == 'fixed' and record.amount == 0:
                 raise UserError(_('The amount is not a number'))
-            if record.amount_type == 'percentage' and not 0 < record.amount:
+            if record.amount_type == 'percentage' and record.amount <= 0:
                 raise UserError(_('The amount is not a percentage'))
             if record.amount_type == 'regex':
                 try:
@@ -324,8 +324,7 @@ class AccountReconcileModel(models.Model):
             if line.amount_type == 'percentage':
                 balance = residual_balance * (line.amount / 100.0)
             elif line.amount_type == "regex":
-                match = re.search(line.amount_string, st_line.payment_ref)
-                if match:
+                if match := re.search(line.amount_string, st_line.payment_ref):
                     sign = 1 if residual_balance > 0.0 else -1
                     extracted_balance = float(re.sub(r'\D' + self.decimal_separator, '', match.group(1)).replace(self.decimal_separator, '.'))
                     balance = copysign(extracted_balance * sign, residual_balance)
@@ -493,8 +492,7 @@ class AccountReconcileModel(models.Model):
             all_model_candidates = rec_model._get_candidates(filtered_st_lines_with_partner, excluded_ids)
 
             for st_line, partner in filtered_st_lines_with_partner:
-                candidates = all_model_candidates[st_line.id]
-                if candidates:
+                if candidates := all_model_candidates[st_line.id]:
                     model_rslt, new_reconciled_aml_ids, new_treated_aml_ids = rec_model._get_rule_result(st_line, candidates, aml_ids_to_exclude, reconciled_amls_ids, partner)
 
                     if model_rslt:
@@ -792,7 +790,11 @@ class AccountReconcileModel(models.Model):
 
         # Special case: the amounts are the same, submit the line directly.
         st_line_currency = st_line.foreign_currency_id or st_line.currency_id
-        candidate_currencies = set(candidate['aml_currency_id'] or st_line.company_id.currency_id.id for candidate in candidates)
+        candidate_currencies = {
+            candidate['aml_currency_id'] or st_line.company_id.currency_id.id
+            for candidate in candidates
+        }
+
         if candidate_currencies == {st_line_currency.id}:
             for candidate in candidates:
                 residual_amount = candidate['aml_currency_id'] and candidate['aml_amount_residual_currency'] or candidate['aml_amount_residual']

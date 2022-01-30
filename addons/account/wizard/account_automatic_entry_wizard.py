@@ -61,10 +61,7 @@ class AutomaticEntryWizard(models.TransientModel):
     def _compute_percentage(self):
         for record in self:
             total = (sum(record.move_line_ids.mapped('balance')) or record.total_amount)
-            if total != 0:
-                record.percentage = (record.total_amount / total) * 100
-            else:
-                record.percentage = 100
+            record.percentage = (record.total_amount / total) * 100 if total != 0 else 100
 
     @api.depends('move_line_ids')
     def _compute_account_type(self):
@@ -237,15 +234,17 @@ class AutomaticEntryWizard(models.TransientModel):
                 }),
             ]
 
-        move_vals = [m for m in move_data.values()]
-        return move_vals
+        return list(move_data.values())
 
     @api.depends('move_line_ids', 'journal_id', 'revenue_accrual_account', 'expense_accrual_account', 'percentage', 'date', 'account_type', 'action', 'destination_account_id')
     def _compute_move_data(self):
         for record in self:
-            if record.action == 'change_period':
-                if any(line.account_id.user_type_id != record.move_line_ids[0].account_id.user_type_id for line in record.move_line_ids):
-                    raise UserError(_('All accounts on the lines must be of the same type.'))
+            if record.action == 'change_period' and any(
+                line.account_id.user_type_id
+                != record.move_line_ids[0].account_id.user_type_id
+                for line in record.move_line_ids
+            ):
+                raise UserError(_('All accounts on the lines must be of the same type.'))
             if record.action == 'change_period':
                 record.move_data = json.dumps(record._get_move_dict_vals_change_period())
             elif record.action == 'change_account':
@@ -264,9 +263,13 @@ class AutomaticEntryWizard(models.TransientModel):
                 preview_columns[2:2] = [{'field': 'partner_id', 'label': _('Partner')}]
 
             move_vals = json.loads(record.move_data)
-            preview_vals = []
-            for move in move_vals[:4]:
-                preview_vals += [self.env['account.move']._move_dict_to_preview_vals(move, record.company_id.currency_id)]
+            preview_vals = [
+                self.env['account.move']._move_dict_to_preview_vals(
+                    move, record.company_id.currency_id
+                )
+                for move in move_vals[:4]
+            ]
+
             preview_discarded = max(0, len(move_vals) - len(preview_vals))
 
             record.preview_move_data = json.dumps({
@@ -347,8 +350,9 @@ class AutomaticEntryWizard(models.TransientModel):
             acc_transfer_per_move[line.move_id][line.account_id] += line.balance
 
         for move, balances_per_account in acc_transfer_per_move.items():
-            message_to_log = self._format_transfer_source_log(balances_per_account, new_move)
-            if message_to_log:
+            if message_to_log := self._format_transfer_source_log(
+                balances_per_account, new_move
+            ):
                 move.message_post(body=message_to_log)
 
         # Log on target move as well
@@ -377,10 +381,13 @@ class AutomaticEntryWizard(models.TransientModel):
 
     def _format_transfer_source_log(self, balances_per_account, transfer_move):
         transfer_format = _("<li>{amount} ({debit_credit}) from <strong>%s</strong> were transferred to <strong>{account_target_name}</strong> by {link}</li>")
-        content = ''
-        for account, balance in balances_per_account.items():
-            if account != self.destination_account_id:
-                content += self._format_strings(transfer_format, transfer_move, balance) % account.display_name
+        content = ''.join(
+            self._format_strings(transfer_format, transfer_move, balance)
+            % account.display_name
+            for account, balance in balances_per_account.items()
+            if account != self.destination_account_id
+        )
+
         return content and '<ul>' + content + '</ul>' or None
 
     def _format_move_link(self, move):

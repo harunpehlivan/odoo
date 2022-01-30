@@ -122,8 +122,10 @@ class SetupBarBankConfigWizard(models.TransientModel):
         """ Called when saving the wizard.
         """
         for record in self:
-            selected_journal = record.linked_journal_id
-            if not selected_journal:
+            if selected_journal := record.linked_journal_id:
+                selected_journal.bank_account_id = record.res_partner_bank_id.id
+                selected_journal.name = record.new_journal_name
+            else:
                 new_journal_code = self.env['account.journal'].get_next_bank_cash_default_code('bank', self.env.company)
                 company = self.env.company
                 selected_journal = self.env['account.journal'].create({
@@ -133,9 +135,6 @@ class SetupBarBankConfigWizard(models.TransientModel):
                     'company_id': company.id,
                     'bank_account_id': record.res_partner_bank_id.id,
                 })
-            else:
-                selected_journal.bank_account_id = record.res_partner_bank_id.id
-                selected_journal.name = record.new_journal_name
 
     def validate(self):
         """ Called by the validation button of this wizard. Serves as an

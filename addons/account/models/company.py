@@ -202,11 +202,13 @@ class ResCompany(models.Model):
     def _validate_fiscalyear_lock(self, values):
         if values.get('fiscalyear_lock_date'):
 
-            draft_entries = self.env['account.move'].search([
-                ('company_id', 'in', self.ids),
-                ('state', '=', 'draft'),
-                ('date', '<=', values['fiscalyear_lock_date'])])
-            if draft_entries:
+            if draft_entries := self.env['account.move'].search(
+                [
+                    ('company_id', 'in', self.ids),
+                    ('state', '=', 'draft'),
+                    ('date', '<=', values['fiscalyear_lock_date']),
+                ]
+            ):
                 error_msg = _('There are still unposted entries in the period you want to lock. You should either post or delete them.')
                 action_error = {
                     'view_mode': 'tree',
@@ -219,13 +221,16 @@ class ResCompany(models.Model):
                 }
                 raise RedirectWarning(error_msg, action_error, _('Show unposted entries'))
 
-            unreconciled_statement_lines = self.env['account.bank.statement.line'].search([
-                ('company_id', 'in', self.ids),
-                ('is_reconciled', '=', False),
-                ('date', '<=', values['fiscalyear_lock_date']),
-                ('move_id.state', 'in', ('draft', 'posted')),
-            ])
-            if unreconciled_statement_lines:
+            if unreconciled_statement_lines := self.env[
+                'account.bank.statement.line'
+            ].search(
+                [
+                    ('company_id', 'in', self.ids),
+                    ('is_reconciled', '=', False),
+                    ('date', '<=', values['fiscalyear_lock_date']),
+                    ('move_id.state', 'in', ('draft', 'posted')),
+                ]
+            ):
                 error_msg = _("There are still unreconciled bank statement lines in the period you want to lock."
                             "You should either reconcile or delete them.")
                 action_error = {
@@ -258,9 +263,14 @@ class ResCompany(models.Model):
                 company.reflect_code_prefix_change(company.cash_account_code_prefix, new_cash_code)
 
             #forbid the change of currency_id if there are already some accounting entries existing
-            if 'currency_id' in values and values['currency_id'] != company.currency_id.id:
-                if self.env['account.move.line'].search([('company_id', '=', company.id)]):
-                    raise UserError(_('You cannot change the currency of the company since some journal items already exist'))
+            if (
+                'currency_id' in values
+                and values['currency_id'] != company.currency_id.id
+                and self.env['account.move.line'].search(
+                    [('company_id', '=', company.id)]
+                )
+            ):
+                raise UserError(_('You cannot change the currency of the company since some journal items already exist'))
 
         return super(ResCompany, self).write(values)
 
@@ -353,9 +363,12 @@ class ResCompany(models.Model):
         if none has yet been defined.
         """
         unaffected_earnings_type = self.env.ref("account.data_unaffected_earnings")
-        account = self.env['account.account'].search([('company_id', '=', self.id),
-                                                      ('user_type_id', '=', unaffected_earnings_type.id)])
-        if account:
+        if account := self.env['account.account'].search(
+            [
+                ('company_id', '=', self.id),
+                ('user_type_id', '=', unaffected_earnings_type.id),
+            ]
+        ):
             return account[0]
         # Do not assume '999999' doesn't exist since the user might have created such an account
         # manually.
@@ -390,35 +403,38 @@ class ResCompany(models.Model):
         and is unbalanced, balances it with a automatic account.move.line in the
         current year earnings account.
         """
-        if self.account_opening_move_id and self.account_opening_move_id.state == 'draft':
-            balancing_account = self.get_unaffected_earnings_account()
-            currency = self.currency_id
+        if (
+            not self.account_opening_move_id
+            or self.account_opening_move_id.state != 'draft'
+        ):
+            return
+        balancing_account = self.get_unaffected_earnings_account()
+        currency = self.currency_id
 
-            balancing_move_line = self.account_opening_move_id.line_ids.filtered(lambda x: x.account_id == balancing_account)
-            # There could be multiple lines if we imported the balance from unaffected earnings account too
-            if len(balancing_move_line) > 1:
-                self.with_context(check_move_validity=False).account_opening_move_id.line_ids -= balancing_move_line[1:]
-                balancing_move_line = balancing_move_line[0]
+        balancing_move_line = self.account_opening_move_id.line_ids.filtered(lambda x: x.account_id == balancing_account)
+        # There could be multiple lines if we imported the balance from unaffected earnings account too
+        if len(balancing_move_line) > 1:
+            self.with_context(check_move_validity=False).account_opening_move_id.line_ids -= balancing_move_line[1:]
+            balancing_move_line = balancing_move_line[0]
 
-            debit_diff, credit_diff = self.get_opening_move_differences(self.account_opening_move_id.line_ids)
+        debit_diff, credit_diff = self.get_opening_move_differences(self.account_opening_move_id.line_ids)
 
-            if float_is_zero(debit_diff + credit_diff, precision_rounding=currency.rounding):
-                if balancing_move_line:
-                    # zero difference and existing line : delete the line
-                    self.account_opening_move_id.line_ids -= balancing_move_line
-            else:
-                if balancing_move_line:
-                    # Non-zero difference and existing line : edit the line
-                    balancing_move_line.write({'debit': credit_diff, 'credit': debit_diff})
-                else:
-                    # Non-zero difference and no existing line : create a new line
-                    self.env['account.move.line'].create({
-                        'name': _('Automatic Balancing Line'),
-                        'move_id': self.account_opening_move_id.id,
-                        'account_id': balancing_account.id,
-                        'debit': credit_diff,
-                        'credit': debit_diff,
-                    })
+        if float_is_zero(debit_diff + credit_diff, precision_rounding=currency.rounding):
+            if balancing_move_line:
+                # zero difference and existing line : delete the line
+                self.account_opening_move_id.line_ids -= balancing_move_line
+        elif balancing_move_line:
+            # Non-zero difference and existing line : edit the line
+            balancing_move_line.write({'debit': credit_diff, 'credit': debit_diff})
+        else:
+            # Non-zero difference and no existing line : create a new line
+            self.env['account.move.line'].create({
+                'name': _('Automatic Balancing Line'),
+                'move_id': self.account_opening_move_id.id,
+                'account_id': balancing_account.id,
+                'debit': credit_diff,
+                'credit': debit_diff,
+            })
 
     @api.model
     def action_close_account_invoice_onboarding(self):
@@ -439,8 +455,9 @@ class ResCompany(models.Model):
 
     @api.model
     def action_open_account_onboarding_create_invoice(self):
-        action = self.env["ir.actions.actions"]._for_xml_id("account.action_open_account_onboarding_create_invoice")
-        return action
+        return self.env["ir.actions.actions"]._for_xml_id(
+            "account.action_open_account_onboarding_create_invoice"
+        )
 
     def action_save_onboarding_invoice_layout(self):
         """ Set the onboarding step as done """

@@ -272,13 +272,13 @@ class AccountTax(models.Model):
         if self.amount_type == 'percent' and not price_include:
             return base_amount * self.amount / 100
         # <=> new_base = base / (1 + tax_amount)
-        if self.amount_type == 'percent' and price_include:
+        if self.amount_type == 'percent':
             return base_amount - (base_amount / (1 + self.amount / 100))
         # base / (1 - tax_amount) = new_base
         if self.amount_type == 'division' and not price_include:
             return base_amount / (1 - self.amount / 100) - base_amount if (1 - self.amount / 100) else 0.0
         # <=> new_base * (1 - tax_amount) = base
-        if self.amount_type == 'division' and price_include:
+        if self.amount_type == 'division':
             return base_amount - (base_amount * (self.amount / 100))
 
     def json_friendly_compute_all(self, price_unit, currency_id=None, quantity=1.0, product_id=None, partner_id=None, is_refund=False):
@@ -612,8 +612,9 @@ class AccountTax(models.Model):
         # FIXME get currency in param?
         prod_taxes = prod_taxes._origin
         line_taxes = line_taxes._origin
-        incl_tax = prod_taxes.filtered(lambda tax: tax not in line_taxes and tax.price_include)
-        if incl_tax:
+        if incl_tax := prod_taxes.filtered(
+            lambda tax: tax not in line_taxes and tax.price_include
+        ):
             return incl_tax.compute_all(price)['total_excluded']
         return price
 
@@ -659,7 +660,10 @@ class AccountTaxRepartitionLine(models.Model):
         if not self.account_id:
             self.use_in_tax_closing = False
         else:
-            self.use_in_tax_closing = not(self.account_id.internal_group == 'income' or self.account_id.internal_group == 'expense')
+            self.use_in_tax_closing = not self.account_id.internal_group in [
+                'income',
+                'expense',
+            ]
 
     @api.constrains('invoice_tax_id', 'refund_tax_id')
     def validate_tax_template_link(self):

@@ -141,8 +141,7 @@ class ReportInvoiceWithoutPayment(models.AbstractModel):
         qr_code_urls = {}
         for invoice in docs:
             if invoice.display_qr_code:
-                new_code_url = invoice.generate_qr_code()
-                if new_code_url:
+                if new_code_url := invoice.generate_qr_code():
                     qr_code_urls[invoice.id] = new_code_url
 
         return {

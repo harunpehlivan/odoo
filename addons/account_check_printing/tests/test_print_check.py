@@ -32,13 +32,25 @@ class TestPrintCheck(AccountTestInvoicingCommon):
         })
 
         # Create 10 customer invoices.
-        out_invoices = self.env['account.move'].create([{
-            'move_type': 'out_invoice',
-            'partner_id': self.partner_a.id,
-            'date': '2017-01-01',
-            'invoice_date': '2017-01-01',
-            'invoice_line_ids': [(0, 0, {'product_id': self.product_a.id, 'price_unit': 100.0})]
-        } for i in range(nb_invoices_to_test)])
+        out_invoices = self.env['account.move'].create(
+            [
+                {
+                    'move_type': 'out_invoice',
+                    'partner_id': self.partner_a.id,
+                    'date': '2017-01-01',
+                    'invoice_date': '2017-01-01',
+                    'invoice_line_ids': [
+                        (
+                            0,
+                            0,
+                            {'product_id': self.product_a.id, 'price_unit': 100.0},
+                        )
+                    ],
+                }
+                for _ in range(nb_invoices_to_test)
+            ]
+        )
+
         out_invoices.action_post()
 
         # Create a single payment.
@@ -73,13 +85,25 @@ class TestPrintCheck(AccountTestInvoicingCommon):
         })
 
         # Create 10 refunds.
-        out_refunds = self.env['account.move'].create([{
-            'move_type': 'out_refund',
-            'partner_id': self.partner_a.id,
-            'date': '2017-01-01',
-            'invoice_date': '2017-01-01',
-            'invoice_line_ids': [(0, 0, {'product_id': self.product_a.id, 'price_unit': 100.0})]
-        } for i in range(nb_invoices_to_test)])
+        out_refunds = self.env['account.move'].create(
+            [
+                {
+                    'move_type': 'out_refund',
+                    'partner_id': self.partner_a.id,
+                    'date': '2017-01-01',
+                    'invoice_date': '2017-01-01',
+                    'invoice_line_ids': [
+                        (
+                            0,
+                            0,
+                            {'product_id': self.product_a.id, 'price_unit': 100.0},
+                        )
+                    ],
+                }
+                for _ in range(nb_invoices_to_test)
+            ]
+        )
+
         out_refunds.action_post()
 
         # Create a single payment.

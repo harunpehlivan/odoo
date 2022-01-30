@@ -761,9 +761,6 @@ class TestReconciliationMatchingRules(AccountTestInvoicingCommon):
         self.assertEqual(len(matching_result[statement_line.id].get('write_off_vals', [])), 1, "Exactly one write-off line should be proposed.")
 
         full_write_off_dict = matching_result[statement_line.id]['write_off_vals'][0]
-        to_compare = {
-                key: full_write_off_dict[key]
-                for key in expected_write_off.keys()
-        }
+        to_compare = {key: full_write_off_dict[key] for key in expected_write_off}
 
         self.assertDictEqual(expected_write_off, to_compare)

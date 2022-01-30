@@ -26,29 +26,38 @@ class TaxAdjustments(models.TransientModel):
 
 
     def create_move(self):
-        move_line_vals = []
-
         is_debit = self.adjustment_type == 'debit'
         sign_multiplier = (self.amount<0 and -1 or 1) * (self.adjustment_type == 'credit' and -1 or 1)
         filter_lambda = (sign_multiplier < 0) and (lambda x: x.tax_negate) or (lambda x: not x.tax_negate)
         adjustment_tag = self.tax_report_line_id.tag_ids.filtered(filter_lambda)
 
-        # Vals for the amls corresponding to the ajustment tag
-        move_line_vals.append((0, 0, {
-            'name': self.reason,
-            'debit': is_debit and abs(self.amount) or 0,
-            'credit': not is_debit and abs(self.amount) or 0,
-            'account_id': is_debit and self.debit_account_id.id or self.credit_account_id.id,
-            'tax_tag_ids': [(6, False, [adjustment_tag.id])],
-        }))
-
-        # Vals for the counterpart line
-        move_line_vals.append((0, 0, {
-            'name': self.reason,
-            'debit': not is_debit and abs(self.amount) or 0,
-            'credit': is_debit and abs(self.amount) or 0,
-            'account_id': is_debit and self.credit_account_id.id or self.debit_account_id.id,
-        }))
+        move_line_vals = [
+            (
+                0,
+                0,
+                {
+                    'name': self.reason,
+                    'debit': is_debit and abs(self.amount) or 0,
+                    'credit': not is_debit and abs(self.amount) or 0,
+                    'account_id': is_debit
+                    and self.debit_account_id.id
+                    or self.credit_account_id.id,
+                    'tax_tag_ids': [(6, False, [adjustment_tag.id])],
+                },
+            ),
+            (
+                0,
+                0,
+                {
+                    'name': self.reason,
+                    'debit': not is_debit and abs(self.amount) or 0,
+                    'credit': is_debit and abs(self.amount) or 0,
+                    'account_id': is_debit
+                    and self.credit_account_id.id
+                    or self.debit_account_id.id,
+                },
+            ),
+        ]
 
         # Create the move
         vals = {

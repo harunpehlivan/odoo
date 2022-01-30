@@ -110,8 +110,7 @@ class AccountAccount(models.Model):
             AND EXISTS (SELECT 1 FROM account_account_account_journal_rel WHERE account_account_id = aml.account_id)
             AND NOT EXISTS (SELECT 1 FROM account_account_account_journal_rel WHERE account_account_id = aml.account_id AND account_journal_id = aml.journal_id)
         """, [tuple(self.ids)])
-        ids = self._cr.fetchall()
-        if ids:
+        if ids := self._cr.fetchall():
             raise ValidationError(_('Some journal items already exist with this account but in other journals than the allowed ones.'))
 
     @api.constrains('currency_id')
@@ -142,8 +141,7 @@ class AccountAccount(models.Model):
             AND journal.currency_id != company.currency_id
             AND account.currency_id != journal.currency_id
         ''', [tuple(self.ids)])
-        res = self._cr.fetchone()
-        if res:
+        if res := self._cr.fetchone():
             account = self.env['account.account'].browse(res[0])
             journal = self.env['account.journal'].browse(res[1])
             raise ValidationError(_(
@@ -273,13 +271,14 @@ class AccountAccount(models.Model):
         opening_move = self.company_id.account_opening_move_id
 
         if opening_move.state == 'draft':
-            # check whether we should create a new move line or modify an existing one
-            account_op_lines = self.env['account.move.line'].search([('account_id', '=', self.id),
-                                                                      ('move_id','=', opening_move.id),
-                                                                      (field,'!=', False),
-                                                                      (field,'!=', 0.0)]) # 0.0 condition important for import
-
-            if account_op_lines:
+            if account_op_lines := self.env['account.move.line'].search(
+                [
+                    ('account_id', '=', self.id),
+                    ('move_id', '=', opening_move.id),
+                    (field, '!=', False),
+                    (field, '!=', 0.0),
+                ]
+            ):
                 op_aml_debit = sum(account_op_lines.mapped('debit'))
                 op_aml_credit = sum(account_op_lines.mapped('credit'))
 
@@ -308,7 +307,7 @@ class AccountAccount(models.Model):
                 })
 
             # Then, we automatically balance the opening move, to make sure it stays valid
-            if not 'import_file' in self.env.context:
+            if 'import_file' not in self.env.context:
                 # When importing a file, avoid recomputing the opening move for each account and do it at the end, for better performances
                 self.company_id._auto_balance_opening_move()
 
@@ -355,11 +354,7 @@ class AccountAccount(models.Model):
             self.tax_ids = self.company_id.account_purchase_tax_id
 
     def name_get(self):
-        result = []
-        for account in self:
-            name = account.code + ' ' + account.name
-            result.append((account.id, name))
-        return result
+        return [(account.id, account.code + ' ' + account.name) for account in self]
 
     @api.returns('self', lambda value: value.id)
     def copy(self, default=None):
@@ -458,8 +453,11 @@ class AccountAccount(models.Model):
             raise UserError(_('You cannot perform this action on an account that contains journal items.'))
         #Checking whether the account is set as a property to any Partner or not
         values = ['account.account,%s' % (account_id,) for account_id in self.ids]
-        partner_prop_acc = self.env['ir.property'].sudo().search([('value_reference', 'in', values)], limit=1)
-        if partner_prop_acc:
+        if (
+            partner_prop_acc := self.env['ir.property']
+            .sudo()
+            .search([('value_reference', 'in', values)], limit=1)
+        ):
             account_name = partner_prop_acc.get_by_record().display_name
             raise UserError(
                 _('You cannot remove/deactivate the account %s which is set on a customer or vendor.', account_name)
@@ -550,8 +548,7 @@ class AccountGroup(models.Model):
             WHERE this.id IN %(ids)s
         """
         self.env.cr.execute(query, {'ids': tuple(self.ids)})
-        res = self.env.cr.fetchall()
-        if res:
+        if res := self.env.cr.fetchall():
             raise ValidationError(_('Account Groups with the same granularity can\'t overlap'))
 
     @api.model_create_multi

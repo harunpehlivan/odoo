@@ -71,11 +71,12 @@ class AccountInvoiceSend(models.TransientModel):
     def _compute_invoice_without_email(self):
         for wizard in self:
             if wizard.is_email and len(wizard.invoice_ids) > 1:
-                invoices = self.env['account.move'].search([
-                    ('id', 'in', self.env.context.get('active_ids')),
-                    ('partner_id.email', '=', False)
-                ])
-                if invoices:
+                if invoices := self.env['account.move'].search(
+                    [
+                        ('id', 'in', self.env.context.get('active_ids')),
+                        ('partner_id.email', '=', False),
+                    ]
+                ):
                     wizard.invoice_without_email = "%s\n%s" % (
                         _("The following invoice(s) will not be sent by email, because the customers don't have email address."),
                         "\n".join([i.name for i in invoices])

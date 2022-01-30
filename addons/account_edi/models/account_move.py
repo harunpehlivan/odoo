@@ -82,12 +82,14 @@ class AccountMove(models.Model):
                 move.edi_show_cancel_button = False
                 continue
 
-            move.edi_show_cancel_button = any([doc.edi_format_id._needs_web_services()
-                                               and doc.attachment_id
-                                               and doc.state == 'sent'
-                                               and move.is_invoice(include_receipts=True)
-                                               and doc.edi_format_id._is_required_for_invoice(move)
-                                              for doc in move.edi_document_ids])
+            move.edi_show_cancel_button = any(
+                doc.edi_format_id._needs_web_services()
+                and doc.attachment_id
+                and doc.state == 'sent'
+                and move.is_invoice(include_receipts=True)
+                and doc.edi_format_id._is_required_for_invoice(move)
+                for doc in move.edi_document_ids
+            )
 
     ####################################################
     # Export Electronic Document
@@ -135,11 +137,12 @@ class AccountMove(models.Model):
         edi_document_vals_list = []
         for move in posted:
             for edi_format in move.journal_id.edi_format_ids:
-                is_edi_needed = move.is_invoice(include_receipts=False) and edi_format._is_required_for_invoice(move)
-
-                if is_edi_needed:
-                    existing_edi_document = move.edi_document_ids.filtered(lambda x: x.edi_format_id == edi_format)
-                    if existing_edi_document:
+                if is_edi_needed := move.is_invoice(
+                    include_receipts=False
+                ) and edi_format._is_required_for_invoice(move):
+                    if existing_edi_document := move.edi_document_ids.filtered(
+                        lambda x: x.edi_format_id == edi_format
+                    ):
                         existing_edi_document.write({
                             'state': 'to_send',
                             'attachment_id': False,
@@ -231,8 +234,9 @@ class AccountMove(models.Model):
 
         edi_formats = self.env['account.edi.format'].search([])
         for attachment in attachments:
-            invoice = edi_formats._update_invoice_from_attachment(attachment, self)
-            if invoice:
+            if invoice := edi_formats._update_invoice_from_attachment(
+                attachment, self
+            ):
                 break
 
         return res

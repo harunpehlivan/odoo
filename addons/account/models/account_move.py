@@ -472,9 +472,10 @@ class AccountMove(models.Model):
     @api.onchange('move_type')
     def _onchange_type(self):
         ''' Onchange made to filter the partners depending of the type. '''
-        if self.is_sale_document(include_receipts=True):
-            if self.env['ir.config_parameter'].sudo().get_param('account.use_invoice_terms'):
-                self.narration = self.company_id.invoice_terms or self.env.company.invoice_terms
+        if self.is_sale_document(include_receipts=True) and self.env[
+            'ir.config_parameter'
+        ].sudo().get_param('account.use_invoice_terms'):
+            self.narration = self.company_id.invoice_terms or self.env.company.invoice_terms
 
     @api.onchange('invoice_line_ids')
     def _onchange_invoice_line_ids(self):
@@ -589,10 +590,16 @@ class AccountMove(models.Model):
             )
 
             if move.move_type == 'entry':
-                repartition_field = is_refund and 'refund_repartition_line_ids' or 'invoice_repartition_line_ids'
+                repartition_field = (
+                    'refund_repartition_line_ids'
+                    if is_refund
+                    else 'invoice_repartition_line_ids'
+                )
+
                 repartition_tags = base_line.tax_ids.flatten_taxes_hierarchy().mapped(repartition_field).filtered(lambda x: x.repartition_type == 'base').tag_ids
-                tags_need_inversion = (tax_type == 'sale' and not is_refund) or (tax_type == 'purchase' and is_refund)
-                if tags_need_inversion:
+                if tags_need_inversion := (tax_type == 'sale' and not is_refund) or (
+                    tax_type == 'purchase' and is_refund
+                ):
                     balance_taxes_res['base_tags'] = base_line._revert_signed_tags(repartition_tags).ids
                     for tax_res in balance_taxes_res['taxes']:
                         tax_res['tag_ids'] = base_line._revert_signed_tags(self.env['account.account.tag'].browse(tax_res['tag_ids'])).ids
@@ -911,17 +918,15 @@ class AccountMove(models.Model):
             :param total_amount_currency:   The invoice's total in invoice's currency.
             :return:                        A list <to_pay_company_currency, to_pay_invoice_currency, due_date>.
             '''
-            if self.invoice_payment_term_id:
-                to_compute = self.invoice_payment_term_id.compute(total_balance, date_ref=date, currency=self.company_id.currency_id)
-                if self.currency_id == self.company_id.currency_id:
-                    # Single-currency.
-                    return [(b[0], b[1], b[1]) for b in to_compute]
-                else:
-                    # Multi-currencies.
-                    to_compute_currency = self.invoice_payment_term_id.compute(total_amount_currency, date_ref=date, currency=self.currency_id)
-                    return [(b[0], b[1], ac[1]) for b, ac in zip(to_compute, to_compute_currency)]
-            else:
+            if not self.invoice_payment_term_id:
                 return [(fields.Date.to_string(date), total_balance, total_amount_currency)]
+            to_compute = self.invoice_payment_term_id.compute(total_balance, date_ref=date, currency=self.company_id.currency_id)
+            if self.currency_id == self.company_id.currency_id:
+                # Single-currency.
+                return [(b[0], b[1], b[1]) for b in to_compute]
+            # Multi-currencies.
+            to_compute_currency = self.invoice_payment_term_id.compute(total_amount_currency, date_ref=date, currency=self.currency_id)
+            return [(b[0], b[1], ac[1]) for b, ac in zip(to_compute, to_compute_currency)]
 
         def _compute_diff_payment_terms_lines(self, existing_terms_lines, account, to_compute):
             ''' Process the result of the '_compute_payment_terms' method and creates/updates corresponding invoice lines.
@@ -1126,10 +1131,11 @@ class AccountMove(models.Model):
 
     @api.onchange('name', 'highest_name')
     def _onchange_name_warning(self):
-        if self.name and self.name != '/' and self.name <= (self.highest_name or ''):
-            self.show_name_warning = True
-        else:
-            self.show_name_warning = False
+        self.show_name_warning = bool(
+            self.name
+            and self.name != '/'
+            and self.name <= (self.highest_name or '')
+        )
 
     def _get_last_sequence_domain(self, relaxed=False):
         self.ensure_one()
@@ -1168,8 +1174,10 @@ class AccountMove(models.Model):
 
     @api.depends('move_type')
     def _compute_type_name(self):
-        type_name_mapping = {k: v for k, v in
-                             self._fields['move_type']._description_selection(self.env)}
+        type_name_mapping = dict(
+            self._fields['move_type']._description_selection(self.env)
+        )
+
         replacements = {'out_invoice': _('Invoice'), 'out_refund': _('Credit Note')}
 
         for record in self:
@@ -1265,11 +1273,9 @@ class AccountMove(models.Model):
                         total_to_pay += line.balance
                         total_residual += line.amount_residual
                         total_residual_currency += line.amount_residual_currency
-                else:
-                    # === Miscellaneous journal entry ===
-                    if line.debit:
-                        total += line.balance
-                        total_currency += line.amount_currency
+                elif line.debit:
+                    total += line.balance
+                    total_currency += line.amount_currency
 
             if move.move_type == 'entry' or move.is_outbound():
                 sign = 1
@@ -1316,18 +1322,24 @@ class AccountMove(models.Model):
             if len(move.line_ids) != 2 or move.is_invoice(include_receipts=True):
                 continue
 
-            to_write = []
-
             amount_currency = abs(move.amount_total)
             balance = move.currency_id._convert(amount_currency, move.company_currency_id, move.company_id, move.date)
 
-            for line in move.line_ids:
-                if not line.currency_id.is_zero(balance - abs(line.balance)):
-                    to_write.append((1, line.id, {
+            to_write = [
+                (
+                    1,
+                    line.id,
+                    {
                         'debit': line.balance > 0.0 and balance or 0.0,
                         'credit': line.balance < 0.0 and balance or 0.0,
-                        'amount_currency': line.balance > 0.0 and amount_currency or -amount_currency,
-                    }))
+                        'amount_currency': line.balance > 0.0
+                        and amount_currency
+                        or -amount_currency,
+                    },
+                )
+                for line in move.line_ids
+                if not line.currency_id.is_zero(balance - abs(line.balance))
+            ]
 
             move.write({'line_ids': to_write})
 
@@ -1588,8 +1600,7 @@ class AccountMove(models.Model):
                 AND move2.id != move.id
             WHERE move.id IN %s AND move2.state = 'posted'
         ''', [tuple(moves.ids)])
-        res = self._cr.fetchall()
-        if res:
+        if res := self._cr.fetchall():
             raise ValidationError(_('Posted journal entry must have an unique sequence number per company.\n'
                                     'Problematic numbers: %s\n') % ', '.join(r[1] for r in res))
 
@@ -1621,8 +1632,7 @@ class AccountMove(models.Model):
                 AND move2.id != move.id
             WHERE move.id IN %s
         ''', [tuple(moves.ids)])
-        duplicated_moves = self.browse([r[0] for r in self._cr.fetchall()])
-        if duplicated_moves:
+        if duplicated_moves := self.browse([r[0] for r in self._cr.fetchall()]):
             raise ValidationError(_('Duplicated vendor reference detected. You probably encoded twice the same vendor bill/credit note:\n%s') % "\n".join(
                 duplicated_moves.mapped(lambda m: "%(partner)s - %(ref)s - %(date)s" % {'ref': m.ref, 'partner': m.partner_id.display_name, 'date': format_date(self.env, m.date)})
             ))
@@ -1652,8 +1662,7 @@ class AccountMove(models.Model):
             HAVING ROUND(SUM(line.debit - line.credit), currency.decimal_places) != 0.0;
         ''', [tuple(self.ids)])
 
-        query_res = self._cr.fetchall()
-        if query_res:
+        if query_res := self._cr.fetchall():
             ids = [res[0] for res in query_res]
             sums = [res[1] for res in query_res]
             raise UserError(_("Cannot create unbalanced journal entry. Ids: %s\nDifferences debit - credit: %s") % (ids, sums))
@@ -1737,7 +1746,9 @@ class AccountMove(models.Model):
                 new_vals_list.append(vals)
                 continue
             vals['move_type'] = vals.get('move_type', self._context.get('default_move_type', 'entry'))
-            if not vals['move_type'] in self.get_invoice_types(include_receipts=True):
+            if vals['move_type'] not in self.get_invoice_types(
+                include_receipts=True
+            ):
                 new_vals_list.append(vals)
                 continue
 
@@ -1849,7 +1860,7 @@ class AccountMove(models.Model):
             self.mapped('line_ids')._check_tax_lock_date()
 
         if ('state' in vals and vals.get('state') == 'posted'):
-            for move in self.filtered(lambda m: m.restrict_mode_hash_table and not(m.secure_sequence_number or m.inalterable_hash)).sorted(lambda m: (m.date, m.ref or '', m.id)):
+            for move in self.filtered(lambda m: m.restrict_mode_hash_table and not m.secure_sequence_number and not m.inalterable_hash).sorted(lambda m: (m.date, m.ref or '', m.id)):
                 new_number = move.journal_id.secure_sequence_id.next_by_id()
                 vals_hashing = {'secure_sequence_number': new_number,
                                 'inalterable_hash': move._get_new_hash(new_number)}
@@ -2043,8 +2054,15 @@ class AccountMove(models.Model):
         self.ensure_one()
         base = self.id
         check_digits = calc_check_digits('{}RF'.format(base))
-        reference = 'RF{} {}'.format(check_digits, " ".join(["".join(x) for x in zip_longest(*[iter(str(base))]*4, fillvalue="")]))
-        return reference
+        return 'RF{} {}'.format(
+            check_digits,
+            " ".join(
+                [
+                    "".join(x)
+                    for x in zip_longest(*[iter(str(base))] * 4, fillvalue="")
+                ]
+            ),
+        )
 
     def _get_invoice_reference_euro_partner(self):
         """ This computes the reference based on the RF Creditor Reference.
@@ -2062,8 +2080,15 @@ class AccountMove(models.Model):
         partner_ref_nr = re.sub('\D', '', partner_ref or '')[-21:] or str(self.partner_id.id)[-21:]
         partner_ref_nr = partner_ref_nr[-21:]
         check_digits = calc_check_digits('{}RF'.format(partner_ref_nr))
-        reference = 'RF{} {}'.format(check_digits, " ".join(["".join(x) for x in zip_longest(*[iter(partner_ref_nr)]*4, fillvalue="")]))
-        return reference
+        return 'RF{} {}'.format(
+            check_digits,
+            " ".join(
+                [
+                    "".join(x)
+                    for x in zip_longest(*[iter(partner_ref_nr)] * 4, fillvalue="")
+                ]
+            ),
+        )
 
     def _get_invoice_reference_odoo_invoice(self):
         """ This computes the reference based on the Odoo format.
@@ -2087,12 +2112,16 @@ class AccountMove(models.Model):
         self.ensure_one()
         if self.journal_id.invoice_reference_type == 'none':
             return ''
+        if ref_function := getattr(
+            self,
+            '_get_invoice_reference_{}_{}'.format(
+                self.journal_id.invoice_reference_model,
+                self.journal_id.invoice_reference_type,
+            ),
+        ):
+            return ref_function()
         else:
-            ref_function = getattr(self, '_get_invoice_reference_{}_{}'.format(self.journal_id.invoice_reference_model, self.journal_id.invoice_reference_type))
-            if ref_function:
-                return ref_function()
-            else:
-                raise UserError(_('The combination of reference model and reference type on the journal is not implemented'))
+            raise UserError(_('The combination of reference model and reference type on the journal is not implemented'))
 
     def _get_move_display_name(self, show_ref=False):
         ''' Helper to get the display name of an invoice depending of its type.
@@ -2152,10 +2181,12 @@ class AccountMove(models.Model):
         self.ensure_one()
         pay_term_lines = self.line_ids\
             .filtered(lambda line: line.account_internal_type in ('receivable', 'payable'))
-        invoice_partials = []
+        invoice_partials = [
+            (partial, partial.credit_amount_currency, partial.debit_move_id)
+            for partial in pay_term_lines.matched_debit_ids
+        ]
 
-        for partial in pay_term_lines.matched_debit_ids:
-            invoice_partials.append((partial, partial.credit_amount_currency, partial.debit_move_id))
+
         for partial in pay_term_lines.matched_credit_ids:
             invoice_partials.append((partial, partial.debit_amount_currency, partial.credit_move_id))
         return invoice_partials
@@ -2265,12 +2296,10 @@ class AccountMove(models.Model):
         :return:                    An account.move recordset, reverse of the current self.
         '''
         if not default_values_list:
-            default_values_list = [{} for move in self]
+            default_values_list = [{} for _ in self]
 
         if cancel:
-            lines = self.mapped('line_ids')
-            # Avoid maximum recursion depth.
-            if lines:
+            if lines := self.mapped('line_ids'):
                 lines.remove_move_reconcile()
 
         reverse_type_map = {
@@ -2571,9 +2600,7 @@ class AccountMove(models.Model):
         """
         self.ensure_one()
         template = self.env.ref('account.email_template_edi_invoice', raise_if_not_found=False)
-        lang = False
-        if template:
-            lang = template._render_lang(self.ids)[self.id]
+        lang = template._render_lang(self.ids)[self.id] if template else False
         if not lang:
             lang = get_lang(self.env).code
         compose_form = self.env.ref('account.account_invoice_send_wizard_form', raise_if_not_found=False)
@@ -2688,10 +2715,12 @@ class AccountMove(models.Model):
 
         for move in self:
             reversed_move = move._reverse_move_vals({}, False)
-            new_invoice_line_ids = []
-            for cmd, virtualid, line_vals in reversed_move['line_ids']:
-                if not line_vals['exclude_from_invoice_tab']:
-                    new_invoice_line_ids.append((0, 0,line_vals))
+            new_invoice_line_ids = [
+                (0, 0, line_vals)
+                for cmd, virtualid, line_vals in reversed_move['line_ids']
+                if not line_vals['exclude_from_invoice_tab']
+            ]
+
             if move.amount_total < 0:
                 # Inverse all invoice_line_ids
                 for cmd, virtualid, line_vals in new_invoice_line_ids:
@@ -2827,7 +2856,7 @@ class AccountMove(models.Model):
             # No eligible method could be found; we can't generate the QR-code
             return None
 
-        unstruct_ref = self.ref if self.ref else self.name
+        unstruct_ref = self.ref or self.name
         rslt = self.partner_bank_id.build_qr_code_url(self.amount_residual, unstruct_ref, self.payment_reference, self.currency_id, self.partner_id, qr_code_method, silent_errors=False)
 
         # We only set qr_code_method after generating the url; otherwise, it
@@ -3035,11 +3064,11 @@ class AccountMoveLine(models.Model):
     @api.model
     def _get_default_tax_account(self, repartition_line):
         tax = repartition_line.invoice_tax_id or repartition_line.refund_tax_id
-        if tax.tax_exigibility == 'on_payment':
-            account = tax.cash_basis_transition_account_id
-        else:
-            account = repartition_line.account_id
-        return account
+        return (
+            tax.cash_basis_transition_account_id
+            if tax.tax_exigibility == 'on_payment'
+            else repartition_line.account_id
+        )
 
     def _get_computed_name(self):
         self.ensure_one()

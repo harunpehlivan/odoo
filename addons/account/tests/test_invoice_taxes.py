@@ -566,7 +566,7 @@ class TestInvoiceTaxes(AccountTestInvoicingCommon):
         def _create_misc_operation(tax, tax_field):
             with Form(self.env['account.move'], view='account.view_move_form') as move_form:
                 for line_field in ('debit', 'credit'):
-                    line_amount = tax_field == line_field and 1000 or 1150
+                    line_amount = 1000 if tax_field == line_field else 1150
                     with move_form.line_ids.new() as line_form:
                         line_form.name = '%s_line' % line_field
                         line_form.account_id = self.company_data['default_account_revenue']
